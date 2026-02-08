@@ -6,5 +6,6 @@ dist/
 .env
 uploads/*
 !uploads/.gitkeep
+*.traineddata
 .DS_Store
 Thumbs.db

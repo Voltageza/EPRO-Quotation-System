@@ -3,6 +3,7 @@ import { authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../database/connection';
 import { generateBom } from '../services/rule-engine';
 import { getPricingConfig, calculateLinePrice, calculateTotals } from '../services/pricing.service';
+import { generateQuotePdf } from '../services/pdf-generator';
 import { QuoteInput } from '../services/rule-engine/types';
 
 export const quoteRoutes = Router();
@@ -238,6 +239,124 @@ quoteRoutes.post('/:id/generate-bom', requireRole('admin', 'sales'), (req: Reque
     strings_count: result.strings_count,
     panels_per_string: result.panels_per_string,
   });
+});
+
+// POST /api/v1/quotes/:id/clone — duplicate a quote with fresh BoM
+quoteRoutes.post('/:id/clone', requireRole('admin', 'sales'), (req: Request, res: Response) => {
+  const db = getDb();
+  const id = parseInt(req.params.id as string, 10);
+
+  const source = db.prepare('SELECT * FROM quotes WHERE id = ?').get(id) as any;
+  if (!source) { res.status(404).json({ error: 'Quote not found' }); return; }
+
+  const pricing = getPricingConfig();
+  const quoteNumber = nextQuoteNumber();
+
+  // Create new quote copying component selections and distances
+  const result = db.prepare(`
+    INSERT INTO quotes (quote_number, client_id, system_class, panel_id, panel_qty,
+      battery_id, battery_qty, mppt_id, mppt_qty,
+      dc_battery_distance_m, ac_inverter_db_distance_m, ac_db_grid_distance_m,
+      pv_string_length_m, travel_distance_km,
+      pricing_factor, vat_rate, status, version, notes, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 1, ?, ?)
+  `).run(
+    quoteNumber, source.client_id, source.system_class,
+    source.panel_id, source.panel_qty,
+    source.battery_id, source.battery_qty,
+    source.mppt_id, source.mppt_qty,
+    source.dc_battery_distance_m, source.ac_inverter_db_distance_m,
+    source.ac_db_grid_distance_m, source.pv_string_length_m, source.travel_distance_km,
+    pricing.pricing_factor, pricing.vat_rate,
+    `Cloned from ${source.quote_number}.`,
+    req.user!.userId,
+  );
+
+  const newId = result.lastInsertRowid as number;
+
+  // Re-generate BoM with current prices (same logic as generate-bom)
+  const mpptRecord = db.prepare('SELECT product_id FROM mppts WHERE id = ?').get(source.mppt_id) as any;
+  const batteryRecord = db.prepare('SELECT product_id FROM batteries WHERE id = ?').get(source.battery_id) as any;
+
+  const input: QuoteInput = {
+    system_class: source.system_class,
+    panel_id: source.panel_id,
+    panel_qty: source.panel_qty,
+    battery_id: batteryRecord?.product_id || source.battery_id,
+    battery_qty: source.battery_qty,
+    mppt_id: mpptRecord?.product_id || source.mppt_id,
+    mppt_qty: source.mppt_qty,
+    dc_battery_distance_m: source.dc_battery_distance_m,
+    ac_inverter_db_distance_m: source.ac_inverter_db_distance_m,
+    ac_db_grid_distance_m: source.ac_db_grid_distance_m,
+    pv_string_length_m: source.pv_string_length_m,
+    travel_distance_km: source.travel_distance_km,
+  };
+
+  const bomResult = generateBom(input);
+
+  const insertBom = db.prepare(`
+    INSERT INTO quote_bom_items (quote_id, product_id, section, quantity, unit_price_cents, line_total_cents, is_locked, source_rule, sort_order, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  let sortOrder = 0;
+  const pricedItems: Array<{ unit_price_cents: number; quantity: number }> = [];
+
+  for (const item of bomResult.items) {
+    if (!item.product_id) continue;
+    const product = db.prepare('SELECT retail_price FROM products WHERE id = ?').get(item.product_id) as any;
+    if (!product) continue;
+
+    const unitPrice = calculateLinePrice(product.retail_price, pricing.pricing_factor);
+    const lineTotal = Math.round(unitPrice * item.quantity);
+
+    insertBom.run(newId, item.product_id, item.section, item.quantity, unitPrice, lineTotal,
+      item.is_locked ? 1 : 0, item.source_rule, sortOrder++, item.note || null);
+
+    pricedItems.push({ unit_price_cents: unitPrice, quantity: item.quantity });
+  }
+
+  // Insert flags
+  const insertFlag = db.prepare(`
+    INSERT INTO quote_flags (quote_id, severity, code, message, is_blocking) VALUES (?, ?, ?, ?, ?)
+  `);
+  for (const flag of bomResult.flags) {
+    insertFlag.run(newId, flag.severity, flag.code, flag.message, flag.is_blocking ? 1 : 0);
+  }
+
+  // Calculate totals
+  const totals = calculateTotals(pricedItems, pricing.vat_rate);
+
+  db.prepare(`
+    UPDATE quotes SET subtotal_cents = ?, vat_cents = ?, total_cents = ?,
+      strings_count = ?, panels_per_string = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(totals.subtotal_cents, totals.vat_cents, totals.total_cents,
+    bomResult.strings_count, bomResult.panels_per_string, newId);
+
+  res.status(201).json({ id: newId, quote_number: quoteNumber });
+});
+
+// GET /api/v1/quotes/:id/pdf — generate and download PDF
+quoteRoutes.get('/:id/pdf', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string, 10);
+  try {
+    const pdfBuffer = await generateQuotePdf(id);
+    const db = getDb();
+    const quote = db.prepare('SELECT quote_number FROM quotes WHERE id = ?').get(id) as any;
+    const filename = quote ? `${quote.quote_number}.pdf` : `quote-${id}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
+  } catch (err: any) {
+    if (err.message === 'Quote not found') {
+      res.status(404).json({ error: 'Quote not found' });
+    } else {
+      res.status(500).json({ error: 'Failed to generate PDF' });
+    }
+  }
 });
 
 // GET /api/v1/quotes/:id/versions

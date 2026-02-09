@@ -4,9 +4,9 @@ import {
   Select, Button, ActionIcon, Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconEye, IconPlus } from '@tabler/icons-react';
+import { IconEye, IconPlus, IconCopy } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { getQuotes } from '../../api/quotes.api';
+import { getQuotes, cloneQuote } from '../../api/quotes.api';
 
 interface Quote {
   id: number;
@@ -41,6 +41,16 @@ export default function QuotesListPage() {
       .then(setQuotes)
       .catch(() => notifications.show({ title: 'Error', message: 'Failed to load quotes', color: 'red' }))
       .finally(() => setLoading(false));
+  };
+
+  const handleClone = async (quoteId: number) => {
+    try {
+      const { id, quote_number } = await cloneQuote(quoteId);
+      notifications.show({ title: 'Cloned', message: `Created ${quote_number}`, color: 'teal' });
+      navigate(`/quotes/${id}/edit`);
+    } catch {
+      notifications.show({ title: 'Error', message: 'Failed to clone quote', color: 'red' });
+    }
   };
 
   useEffect(() => { loadQuotes(); }, [statusFilter]);
@@ -110,11 +120,18 @@ export default function QuotesListPage() {
                     <Text size="xs" c="dimmed">{new Date(q.created_at).toLocaleDateString()}</Text>
                   </Table.Td>
                   <Table.Td ta="center">
-                    <Tooltip label="View Quote">
-                      <ActionIcon variant="subtle" onClick={() => navigate(`/quotes/${q.id}`)}>
-                        <IconEye size={16} />
-                      </ActionIcon>
-                    </Tooltip>
+                    <Group gap={4} justify="center">
+                      <Tooltip label="View Quote">
+                        <ActionIcon variant="subtle" onClick={() => navigate(`/quotes/${q.id}`)}>
+                          <IconEye size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label="Clone Quote">
+                        <ActionIcon variant="subtle" color="teal" onClick={() => handleClone(q.id)}>
+                          <IconCopy size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Group>
                   </Table.Td>
                 </Table.Tr>
               ))}

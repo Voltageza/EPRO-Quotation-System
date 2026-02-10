@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../database/connection';
+import { recommendMppt } from '../services/design-assistant';
 
 export const componentRoutes = Router();
 componentRoutes.use(authenticate);
@@ -61,6 +62,24 @@ componentRoutes.post('/inverters', requireRole('admin'), (req: Request, res: Res
 });
 
 // === MPPTs ===
+
+// GET /api/v1/components/mppts/recommend?panel_id=X&panel_qty=Y
+componentRoutes.get('/mppts/recommend', (req: Request, res: Response) => {
+  const panelId = parseInt(req.query.panel_id as string, 10);
+  const panelQty = parseInt(req.query.panel_qty as string, 10);
+
+  if (!panelId || !panelQty || panelQty < 1) {
+    res.status(400).json({ error: 'panel_id and panel_qty (>= 1) are required' });
+    return;
+  }
+
+  try {
+    const recommendations = recommendMppt(panelId, panelQty);
+    res.json({ recommendations });
+  } catch (err: any) {
+    res.status(404).json({ error: err.message });
+  }
+});
 
 // GET /api/v1/components/mppts
 componentRoutes.get('/mppts', (_req: Request, res: Response) => {

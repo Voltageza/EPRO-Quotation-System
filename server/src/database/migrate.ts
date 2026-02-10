@@ -3,6 +3,7 @@ import { up as schema } from './migrations/001_initial_schema';
 import { up as seed } from './migrations/002_seed_data';
 import { up as victronSystems } from './migrations/003_seed_victron_systems';
 import { up as ruleSeeds } from './migrations/004_seed_rule_tables';
+import { up as mountingType } from './migrations/005_mounting_type';
 
 interface Migration {
   name: string;
@@ -14,6 +15,7 @@ const migrations: Migration[] = [
   { name: '002_seed_data', up: seed },
   { name: '003_seed_victron_systems', up: victronSystems },
   { name: '004_seed_rule_tables', up: ruleSeeds },
+  { name: '005_mounting_type', up: mountingType },
 ];
 
 export function runMigrations(): void {

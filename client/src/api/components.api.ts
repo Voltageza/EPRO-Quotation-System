@@ -31,6 +31,27 @@ export async function createMppt(mpptData: {
   return data;
 }
 
+export interface MpptRecommendation {
+  mppt_id: number;
+  mppt_name: string;
+  model_code: string;
+  mppt_qty: number;
+  strings_count: number;
+  panels_per_string: number;
+  oversize_pct: number;
+  total_pv_w: number;
+  total_mppt_capacity_w: number;
+  warnings: string[];
+  score: number;
+}
+
+export async function getRecommendedMppt(panelId: number, panelQty: number): Promise<MpptRecommendation[]> {
+  const { data } = await api.get('/components/mppts/recommend', {
+    params: { panel_id: panelId, panel_qty: panelQty },
+  });
+  return data.recommendations;
+}
+
 export async function getBatteries() {
   const { data } = await api.get('/components/batteries');
   return data.batteries;

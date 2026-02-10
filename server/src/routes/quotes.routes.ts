@@ -123,6 +123,7 @@ quoteRoutes.patch('/:id', requireRole('admin', 'sales'), (req: Request, res: Res
     'system_class', 'dc_battery_distance_m', 'ac_inverter_db_distance_m',
     'ac_db_grid_distance_m', 'pv_string_length_m', 'travel_distance_km',
     'panel_id', 'panel_qty', 'battery_id', 'battery_qty', 'mppt_id', 'mppt_qty',
+    'mounting_type', 'mounting_rows', 'mounting_cols',
     'notes', 'status',
   ];
 
@@ -170,6 +171,9 @@ quoteRoutes.post('/:id/generate-bom', requireRole('admin', 'sales'), (req: Reque
     ac_db_grid_distance_m: quote.ac_db_grid_distance_m,
     pv_string_length_m: quote.pv_string_length_m,
     travel_distance_km: quote.travel_distance_km,
+    mounting_type: quote.mounting_type || 'tile',
+    mounting_rows: quote.mounting_rows || 2,
+    mounting_cols: quote.mounting_cols || 6,
   };
 
   // Generate BoM
@@ -258,8 +262,9 @@ quoteRoutes.post('/:id/clone', requireRole('admin', 'sales'), (req: Request, res
       battery_id, battery_qty, mppt_id, mppt_qty,
       dc_battery_distance_m, ac_inverter_db_distance_m, ac_db_grid_distance_m,
       pv_string_length_m, travel_distance_km,
+      mounting_type, mounting_rows, mounting_cols,
       pricing_factor, vat_rate, status, version, notes, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 1, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 1, ?, ?)
   `).run(
     quoteNumber, source.client_id, source.system_class,
     source.panel_id, source.panel_qty,
@@ -267,6 +272,7 @@ quoteRoutes.post('/:id/clone', requireRole('admin', 'sales'), (req: Request, res
     source.mppt_id, source.mppt_qty,
     source.dc_battery_distance_m, source.ac_inverter_db_distance_m,
     source.ac_db_grid_distance_m, source.pv_string_length_m, source.travel_distance_km,
+    source.mounting_type || 'tile', source.mounting_rows || 2, source.mounting_cols || 6,
     pricing.pricing_factor, pricing.vat_rate,
     `Cloned from ${source.quote_number}.`,
     req.user!.userId,
@@ -291,6 +297,9 @@ quoteRoutes.post('/:id/clone', requireRole('admin', 'sales'), (req: Request, res
     ac_db_grid_distance_m: source.ac_db_grid_distance_m,
     pv_string_length_m: source.pv_string_length_m,
     travel_distance_km: source.travel_distance_km,
+    mounting_type: source.mounting_type || 'tile',
+    mounting_rows: source.mounting_rows || 2,
+    mounting_cols: source.mounting_cols || 6,
   };
 
   const bomResult = generateBom(input);

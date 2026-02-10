@@ -12,6 +12,7 @@ import RulesPage from './pages/admin/RulesPage';
 import QuotesListPage from './pages/quotes/QuotesListPage';
 import QuoteWizardPage from './pages/quotes/QuoteWizardPage';
 import QuoteDetailPage from './pages/quotes/QuoteDetailPage';
+import BracketCalculatorPage from './pages/tools/BracketCalculatorPage';
 import AppShell from './components/layout/AppShell';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -47,6 +48,7 @@ export default function App() {
                 <Route path="/quotes/new" element={<QuoteWizardPage />} />
                 <Route path="/quotes/:id" element={<QuoteDetailPage />} />
                 <Route path="/quotes/:id/edit" element={<QuoteWizardPage />} />
+                <Route path="/tools/bracket-calculator" element={<BracketCalculatorPage />} />
                 <Route path="/admin/products" element={<AdminRoute><ProductsPage /></AdminRoute>} />
                 <Route path="/admin/panels" element={<AdminRoute><PanelsPage /></AdminRoute>} />
                 <Route path="/admin/components" element={<AdminRoute><ComponentsPage /></AdminRoute>} />

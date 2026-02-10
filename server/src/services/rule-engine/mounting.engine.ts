@@ -1,83 +1,120 @@
 import { getDb } from '../../database/connection';
-import { EngineResult, PanelData } from './types';
+import { EngineResult, PanelData, BomItem } from './types';
 
 /**
- * MountingEngine: Calculates roof mount hardware (rails, clamps, joiners, brackets).
- * Assumes landscape panel orientation on standard pitched roof.
+ * MountingEngine: Calculates roof mount hardware based on mounting type.
+ *
+ * Three calculation branches:
+ * - IBR / Corrugated: direct brackets + clamps, no rails
+ * - Tile: rails + hanger bolts + L-brackets + clamps
+ * - Tilt Frame (Flat Roof): tilt frame brackets + end clamps only
  */
-export function resolveMounting(panel: PanelData, panelQty: number): EngineResult {
+export function resolveMounting(
+  panel: PanelData,
+  panelQty: number,
+  mountingType: string,
+  rows: number,
+  cols: number
+): EngineResult {
   const db = getDb();
-  const items: EngineResult['items'] = [];
+  const items: BomItem[] = [];
   const flags: EngineResult['flags'] = [];
 
-  // Get mounting parameters from rule table
-  const ruleTable = db.prepare(`
-    SELECT id FROM rule_tables WHERE rule_type = 'mounting' AND is_active = 1 ORDER BY version DESC LIMIT 1
-  `).get() as any;
-
-  if (!ruleTable) {
-    flags.push({ code: 'NO_MOUNTING_RULES', severity: 'warning', message: 'No mounting rules configured — mounting hardware not calculated', is_blocking: false });
-    return { items, flags };
+  // Validate rows × cols matches panelQty
+  const layoutTotal = rows * cols;
+  if (layoutTotal !== panelQty) {
+    flags.push({
+      code: 'MOUNTING_LAYOUT_MISMATCH',
+      severity: 'warning',
+      message: `Mounting layout ${rows}×${cols}=${layoutTotal} does not match panel quantity ${panelQty}. Using layout dimensions for mounting calculation.`,
+      is_blocking: false,
+    });
   }
 
-  const entry = db.prepare(`
-    SELECT * FROM rule_entries WHERE rule_table_id = ? ORDER BY sort_order LIMIT 1
-  `).get(ruleTable.id) as any;
-
-  if (!entry) return { items, flags };
-
-  const config = JSON.parse(entry.result_json);
-  const railLengthMm = config.rail_length_mm || 5850;
-
-  // Panel dimensions (landscape: width is the longer side along the rail)
-  const panelWidthMm = panel.height_mm || 2465; // landscape: height becomes width along rail
-  const panelHeightMm = panel.width_mm || 1134;
-
-  // Assume panels in a single row for simplicity
-  // For larger arrays, split into rows of max ~6 panels
-  const maxPanelsPerRow = 6;
-  const rows = Math.ceil(panelQty / maxPanelsPerRow);
-  const panelsPerRow = Math.ceil(panelQty / rows);
-
-  // Each row needs 2 rails (top and bottom)
-  const railsPerRow = 2;
-  const totalRailSets = rows;
-
-  // Rail length needed per row
-  const rowSpanMm = panelsPerRow * panelWidthMm + (panelsPerRow - 1) * 20; // 20mm gap between panels
-  const railsNeededPerRow = Math.ceil(rowSpanMm / railLengthMm);
-  const totalRails = railsNeededPerRow * railsPerRow * totalRailSets;
-
-  // Joiners: where rails meet end-to-end
-  const joinersPerRow = Math.max(0, railsNeededPerRow - 1) * railsPerRow;
-  const totalJoiners = joinersPerRow * totalRailSets;
-
-  // Clamps
-  const endClampsPerRow = 2 * railsPerRow; // 2 ends per rail pair
-  const midClampsPerRow = Math.max(0, panelsPerRow - 1) * railsPerRow;
-  const totalEndClamps = endClampsPerRow * totalRailSets;
-  const totalMidClamps = midClampsPerRow * totalRailSets;
-
-  // Brackets: 1 per ~1.2m of rail, minimum 2 per rail
-  const bracketsPerRail = Math.max(2, Math.ceil(Math.min(rowSpanMm, railLengthMm) / 1200));
-  const totalBrackets = bracketsPerRail * totalRails;
-
-  // Add items
   const addProduct = (sku: string, qty: number, note: string) => {
+    if (qty <= 0) return;
     const product = db.prepare("SELECT id FROM products WHERE sku = ? AND is_active = 1").get(sku) as any;
-    if (product && qty > 0) {
+    if (product) {
       items.push({ sku, product_id: product.id, section: 'mounting', quantity: qty, is_locked: false, source_rule: 'mounting', note });
+    } else {
+      flags.push({ code: 'MISSING_SKU', severity: 'warning', message: `Product ${sku} not found — mounting item skipped`, is_blocking: false });
     }
   };
 
-  addProduct(config.rail_sku || 'SOLAR42', totalRails, `${totalRails} rails (${rows} row(s) × ${railsPerRow} rails × ${railsNeededPerRow} per span)`);
-  addProduct(config.end_clamp_sku || 'SOLAR40', totalEndClamps, `End clamps (${totalEndClamps})`);
-  addProduct(config.mid_clamp_sku || 'SOLAR39', totalMidClamps, `Mid clamps (${totalMidClamps})`);
-  if (totalJoiners > 0) {
-    addProduct(config.joiner_sku || 'SOLAR41', totalJoiners, `Rail joiners (${totalJoiners})`);
+  if (mountingType === 'ibr' || mountingType === 'corrugated') {
+    // ── IBR / Corrugated: Panels landscape, R rows × C columns ──
+    // Mounting lines = R + 1 (top, between each row pair, bottom)
+    // Outer lines (top + bottom = 2): end clamps — grip one panel
+    // Inner lines (between rows = R - 1): mid clamps — shared by top & bottom panels
+    // Each panel position on a line gets 2 clamps
+    const outerLines = 2;
+    const innerLines = rows - 1;
+    const endClamps = outerLines * cols * 2;
+    const midClamps = innerLines * cols * 2;
+    const brackets = endClamps + midClamps; // 1 bracket per clamp
+
+    addProduct('SOLAR40', endClamps, `End clamps: ${outerLines} outer lines × ${cols} panels × 2 = ${endClamps}`);
+    if (midClamps > 0) {
+      addProduct('SOLAR39', midClamps, `Mid clamps: ${innerLines} inner lines × ${cols} panels × 2 = ${midClamps}`);
+    }
+    const bracketSku = mountingType === 'ibr' ? 'SOLAR45' : 'SOLAR46';
+    addProduct(bracketSku, brackets, `${mountingType.toUpperCase()} brackets: 1 per clamp = ${brackets}`);
+
+  } else if (mountingType === 'tilt_frame_ibr' || mountingType === 'tilt_frame_corrugated') {
+    // ── Flat Roof (Tilt Frame) — each panel independent ──
+    // Per panel: 2 front short + 2 rear long tilt brackets, 4 tilt ends, 4 roof brackets
+    const frontShort = 2 * panelQty;
+    const rearLong = 2 * panelQty;
+    const tiltEnds = 4 * panelQty;
+    const roofBrackets = 4 * panelQty; // 1 per tilt bracket
+
+    addProduct('SOLAR50', frontShort, `Front short tilt brackets: 2 × ${panelQty} panels = ${frontShort}`);
+    addProduct('SOLAR51', rearLong, `Rear long tilt brackets: 2 × ${panelQty} panels = ${rearLong}`);
+    addProduct('SOLAR52', tiltEnds, `Tilt ends: 4 × ${panelQty} panels = ${tiltEnds}`);
+    const bracketSku = mountingType === 'tilt_frame_ibr' ? 'SOLAR45' : 'SOLAR46';
+    const bracketType = mountingType === 'tilt_frame_ibr' ? 'IBR' : 'Corrugated';
+    addProduct(bracketSku, roofBrackets, `${bracketType} brackets: 4 × ${panelQty} panels = ${roofBrackets}`);
+
+  } else {
+    // ── Tile Roof (default): Panels portrait, R rows × C columns ──
+    // Each row has independent top + bottom rails (not shared between rows)
+    const railLines = 2 * rows;
+    // Clamps along each rail: 1 end at each end, 1 mid between each pair of panels
+    const endClamps = 2 * railLines;
+    const midClamps = (cols - 1) * railLines;
+
+    // Panel width in portrait orientation (shorter side)
+    const panelWidthMm = panel.width_mm || 1134;
+    const railSpanMm = panelWidthMm * cols + 200; // 100mm overhang each side
+    const railLengthMm = 5850;
+    const piecesPerLine = Math.ceil(railSpanMm / railLengthMm);
+    // Total rails to purchase: total linear mm needed, offcuts reused across lines
+    const totalLinearMm = railSpanMm * railLines;
+    const totalRails = Math.ceil(totalLinearMm / railLengthMm);
+
+    // Splices where rail pieces join on each line
+    const splicesPerLine = piecesPerLine - 1;
+    const totalSplices = splicesPerLine * railLines;
+
+    // Hanger bolts: spaced max 1450mm apart along each rail line
+    const hangerBoltSpacing = 1450;
+    const hangerBoltsPerLine = Math.ceil(railSpanMm / hangerBoltSpacing) + 1;
+    const totalHangerBolts = hangerBoltsPerLine * railLines;
+
+    // L-brackets: 1 per hanger bolt
+    const totalLBrackets = totalHangerBolts;
+
+    addProduct('SOLAR40', endClamps, `End clamps: 2 × ${railLines} rail lines = ${endClamps}`);
+    if (midClamps > 0) {
+      addProduct('SOLAR39', midClamps, `Mid clamps: ${cols - 1} × ${railLines} rail lines = ${midClamps}`);
+    }
+    addProduct('SOLAR42', totalRails, `Rails: ${totalLinearMm}mm total ÷ ${railLengthMm}mm = ${totalRails} (${railSpanMm}mm/line × ${railLines} lines)`);
+    if (totalSplices > 0) {
+      addProduct('SOLAR41', totalSplices, `Rail splices: ${splicesPerLine}/line × ${railLines} lines = ${totalSplices}`);
+    }
+    addProduct('SOLAR44', totalHangerBolts, `Hanger bolts: ceil(${railSpanMm}mm ÷ ${hangerBoltSpacing}mm) + 1 = ${hangerBoltsPerLine}/line × ${railLines} lines = ${totalHangerBolts}`);
+    addProduct('SOLAR43', totalLBrackets, `L-brackets: 1 per hanger bolt = ${totalLBrackets}`);
   }
-  addProduct(config.bracket_sku || 'SOLAR43', totalBrackets, `L-brackets (${totalBrackets})`);
-  addProduct(config.hangerbolt_sku || 'SOLAR44', totalBrackets, `Hangerbolts (${totalBrackets})`);
 
   return { items, flags };
 }

@@ -40,6 +40,10 @@ export interface QuoteInput {
   pv_string_length_m: number;
   // Travel
   travel_distance_km: number;
+  // Mounting
+  mounting_type: 'ibr' | 'corrugated' | 'tile' | 'tilt_frame_ibr' | 'tilt_frame_corrugated';
+  mounting_rows: number;
+  mounting_cols: number;
 }
 
 export interface PanelData {

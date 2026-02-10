@@ -13,6 +13,7 @@ import { componentRoutes } from './routes/components.routes';
 import { adminRoutes } from './routes/admin.routes';
 import { quoteRoutes } from './routes/quotes.routes';
 import { dashboardRoutes } from './routes/dashboard.routes';
+import { toolsRoutes } from './routes/tools.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { terminateOcrWorker } from './utils/ocr-worker';
 
@@ -34,6 +35,7 @@ app.use('/api/v1/components', componentRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/quotes', quoteRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
+app.use('/api/v1/tools', toolsRoutes);
 
 // Serve static React client in production (only if built)
 const clientDist = path.join(__dirname, '../../client/dist');

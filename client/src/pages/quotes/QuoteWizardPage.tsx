@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Stepper, Button, Group, Stack, Title, Card, TextInput, Select,
   NumberInput, Radio, Table, Badge, Alert, Text, Textarea, Loader, Divider,
@@ -6,7 +6,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowLeft, IconArrowRight, IconCheck, IconAlertTriangle,
-  IconAlertCircle, IconDownload, IconInfoCircle,
+  IconAlertCircle, IconDownload, IconInfoCircle, IconBulb,
 } from '@tabler/icons-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -14,7 +14,10 @@ import {
   downloadQuotePdf,
 } from '../../api/quotes.api';
 import { getPanels } from '../../api/panels.api';
-import { getInverterByClass, getMppts, getBatteries } from '../../api/components.api';
+import {
+  getInverterByClass, getMppts, getBatteries, getRecommendedMppt,
+  MpptRecommendation,
+} from '../../api/components.api';
 
 const formatPrice = (cents: number) => `R ${(cents / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 
@@ -75,7 +78,16 @@ export default function QuoteWizardPage() {
   const [mpptId, setMpptId] = useState<string | null>(null);
   const [mpptQty, setMpptQty] = useState<number>(1);
 
+  // MPPT recommendation
+  const [recommendation, setRecommendation] = useState<MpptRecommendation | null>(null);
+  const [isAutoSelected, setIsAutoSelected] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Step 4: Installation
+  const [mountingType, setMountingType] = useState<string>('tile');
+  const [tiltRoofType, setTiltRoofType] = useState<string>('ibr');
+  const [mountingRows, setMountingRows] = useState<number>(2);
+  const [mountingCols, setMountingCols] = useState<number>(6);
   const [dcBatteryDist, setDcBatteryDist] = useState<number>(1.5);
   const [acInvDbDist, setAcInvDbDist] = useState<number>(5);
   const [acDbGridDist, setAcDbGridDist] = useState<number>(10);
@@ -111,6 +123,16 @@ export default function QuoteWizardPage() {
       if (quote.battery_qty) setBatteryQty(quote.battery_qty);
       if (quote.mppt_id) setMpptId(String(quote.mppt_id));
       if (quote.mppt_qty) setMpptQty(quote.mppt_qty);
+      if (quote.mounting_type) {
+        if (quote.mounting_type.startsWith('tilt_frame_')) {
+          setMountingType('tilt_frame');
+          setTiltRoofType(quote.mounting_type.replace('tilt_frame_', ''));
+        } else {
+          setMountingType(quote.mounting_type);
+        }
+      }
+      if (quote.mounting_rows) setMountingRows(quote.mounting_rows);
+      if (quote.mounting_cols) setMountingCols(quote.mounting_cols);
       if (quote.dc_battery_distance_m != null) setDcBatteryDist(quote.dc_battery_distance_m);
       if (quote.ac_inverter_db_distance_m != null) setAcInvDbDist(quote.ac_inverter_db_distance_m);
       if (quote.ac_db_grid_distance_m != null) setAcDbGridDist(quote.ac_db_grid_distance_m);
@@ -150,6 +172,39 @@ export default function QuoteWizardPage() {
       notifications.show({ title: 'Error', message: 'Failed to load components', color: 'red' })
     );
   }, []);
+
+  // MPPT auto-suggestion when panel + quantity change (debounced 500ms)
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (!panelId || panelQty < 1) {
+      setRecommendation(null);
+      return;
+    }
+
+    debounceRef.current = setTimeout(() => {
+      getRecommendedMppt(parseInt(panelId, 10), panelQty)
+        .then((recs) => {
+          if (recs.length > 0) {
+            const top = recs[0];
+            setRecommendation(top);
+            // Auto-fill MPPT selection
+            setMpptId(String(top.mppt_id));
+            setMpptQty(top.mppt_qty);
+            setIsAutoSelected(true);
+          } else {
+            setRecommendation(null);
+          }
+        })
+        .catch(() => {
+          setRecommendation(null);
+        });
+    }, 500);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [panelId, panelQty]);
 
   // Step handlers
   const handleStep1Next = async () => {
@@ -237,6 +292,9 @@ export default function QuoteWizardPage() {
     setLoading(true);
     try {
       await updateQuote(quoteId, {
+        mounting_type: mountingType === 'tilt_frame' ? `tilt_frame_${tiltRoofType}` : mountingType,
+        mounting_rows: mountingRows,
+        mounting_cols: mountingCols,
         dc_battery_distance_m: dcBatteryDist,
         ac_inverter_db_distance_m: acInvDbDist,
         ac_db_grid_distance_m: acDbGridDist,
@@ -420,6 +478,23 @@ export default function QuoteWizardPage() {
                 </Text>
               )}
 
+              {recommendation && (
+                <Alert
+                  icon={<IconBulb size={16} />}
+                  color={recommendation.warnings.length > 0 ? 'yellow' : 'blue'}
+                  mt="xs"
+                >
+                  <Text size="sm" fw={600}>
+                    Recommended: {recommendation.mppt_name} &times; {recommendation.mppt_qty} &mdash;{' '}
+                    {recommendation.strings_count} string{recommendation.strings_count !== 1 ? 's' : ''} of{' '}
+                    {recommendation.panels_per_string} panels ({recommendation.oversize_pct}% utilization)
+                  </Text>
+                  {recommendation.warnings.map((w, i) => (
+                    <Text key={i} size="xs" c="dimmed" mt={2}>{w}</Text>
+                  ))}
+                </Alert>
+              )}
+
               <Divider my="xs" />
               <Text fw={600}>Battery</Text>
               <Group grow align="flex-end">
@@ -448,13 +523,18 @@ export default function QuoteWizardPage() {
                   searchable
                   data={mppts.map(m => ({ value: String(m.id), label: `${m.name || m.model_code} (${m.max_charge_a}A)` }))}
                   value={mpptId}
-                  onChange={setMpptId}
+                  onChange={(v) => { setMpptId(v); setIsAutoSelected(false); }}
                 />
-                <NumberInput label="Quantity" min={1} max={5} value={mpptQty} onChange={v => setMpptQty(Number(v) || 1)} />
+                <NumberInput label="Quantity" min={1} max={5} value={mpptQty} onChange={v => { setMpptQty(Number(v) || 1); setIsAutoSelected(false); }} />
               </Group>
               {selectedMppt && (
                 <Text size="xs" c="dimmed">
                   Max PV: {selectedMppt.max_pv_voltage}V | Charge: {selectedMppt.max_charge_a}A
+                </Text>
+              )}
+              {!isAutoSelected && recommendation && (mpptId !== String(recommendation.mppt_id) || mpptQty !== recommendation.mppt_qty) && (
+                <Text size="xs" c="dimmed" fs="italic">
+                  Manual override &mdash; recommendation was {recommendation.mppt_name} &times; {recommendation.mppt_qty}
                 </Text>
               )}
             </Stack>
@@ -471,9 +551,54 @@ export default function QuoteWizardPage() {
         </Stepper.Step>
 
         {/* ── Step 4: Installation ── */}
-        <Stepper.Step label="Installation" description="Distances & notes">
+        <Stepper.Step label="Installation" description="Mounting & distances">
           <Card shadow="sm" radius="md" withBorder p="lg" mt="md">
             <Stack>
+              <Text fw={600}>Mounting Type</Text>
+              <Select
+                label="Roof / mounting type"
+                data={[
+                  { value: 'ibr', label: 'IBR Roof' },
+                  { value: 'corrugated', label: 'Corrugated Roof' },
+                  { value: 'tile', label: 'Tile Roof' },
+                  { value: 'tilt_frame', label: 'Tilt Frame' },
+                ]}
+                value={mountingType}
+                onChange={v => setMountingType(v || 'tile')}
+              />
+              {mountingType === 'tilt_frame' && (
+                <Select
+                  label="Tilt frame roof type"
+                  data={[
+                    { value: 'ibr', label: 'IBR' },
+                    { value: 'corrugated', label: 'Corrugated' },
+                  ]}
+                  value={tiltRoofType}
+                  onChange={v => setTiltRoofType(v || 'ibr')}
+                />
+              )}
+              <Group grow>
+                <NumberInput
+                  label="Rows"
+                  min={1} max={20}
+                  value={mountingRows}
+                  onChange={v => setMountingRows(Number(v) || 1)}
+                />
+                <NumberInput
+                  label="Columns"
+                  min={1} max={20}
+                  value={mountingCols}
+                  onChange={v => setMountingCols(Number(v) || 1)}
+                />
+              </Group>
+              <Text size="sm" c={mountingRows * mountingCols !== panelQty ? 'red' : 'dimmed'}>
+                Layout: {mountingRows} &times; {mountingCols} = {mountingRows * mountingCols} panels
+                {mountingRows * mountingCols !== panelQty && (
+                  <> (panel qty is {panelQty})</>
+                )}
+              </Text>
+
+              <Divider my="xs" />
               <Text fw={600}>Cable Distances</Text>
               <Group grow>
                 <NumberInput

@@ -94,8 +94,8 @@ export function generateBom(input: QuoteInput): BomGenerationResult {
   allItems.push(...acProtResult.items);
   allFlags.push(...acProtResult.flags);
 
-  // 7. Mounting → Rails, clamps, joiners, brackets
-  const mountingResult = resolveMounting(panel, input.panel_qty);
+  // 7. Mounting → Rails, clamps, joiners, brackets (type-aware)
+  const mountingResult = resolveMounting(panel, input.panel_qty, input.mounting_type, input.mounting_rows, input.mounting_cols);
   allItems.push(...mountingResult.items);
   allFlags.push(...mountingResult.flags);
 

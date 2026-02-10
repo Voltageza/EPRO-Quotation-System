@@ -20,6 +20,7 @@ import {
   IconUsers,
   IconLogout,
   IconSettings,
+  IconTool,
 } from '@tabler/icons-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -35,6 +36,10 @@ export default function AppShell({ children }: Props) {
   const navItems = [
     { label: 'Dashboard', icon: IconDashboard, path: '/' },
     { label: 'Quotes', icon: IconFileInvoice, path: '/quotes' },
+  ];
+
+  const toolsItems = [
+    { label: 'Bracket Calculator', icon: IconTool, path: '/tools/bracket-calculator' },
   ];
 
   const adminItems = [
@@ -58,6 +63,18 @@ export default function AppShell({ children }: Props) {
         </Box>
 
         {navItems.map((item) => (
+          <NavLink
+            key={item.path}
+            label={item.label}
+            leftSection={<item.icon size={18} />}
+            active={location.pathname === item.path}
+            onClick={() => navigate(item.path)}
+            mb={2}
+          />
+        ))}
+
+        <Divider my="sm" label="Tools" labelPosition="left" />
+        {toolsItems.map((item) => (
           <NavLink
             key={item.path}
             label={item.label}

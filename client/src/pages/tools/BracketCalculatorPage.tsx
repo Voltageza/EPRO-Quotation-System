@@ -2,20 +2,17 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card, Title, Stack, SegmentedControl, Select, NumberInput,
   Button, Table, Alert, Text, Group, Loader, ActionIcon,
-  TextInput, Accordion, Badge, Tabs, FileInput,
+  TextInput, Accordion, Badge,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   IconCalculator, IconAlertTriangle, IconInfoCircle,
-  IconPlus, IconCopy, IconTrash, IconPhoto, IconUpload,
+  IconPlus, IconCopy, IconTrash,
 } from '@tabler/icons-react';
 import { getPanels } from '../../api/panels.api';
 import {
-  calculateMountingMulti,
   calculateMountingIrregular,
-  analyzePhoto,
   MountingMultiResult,
-  MountingGroupInput,
   MountingResultItem,
   IrregularGroupInput,
 } from '../../api/tools.api';
@@ -30,16 +27,52 @@ interface Panel {
   width_mm: number | null;
 }
 
+// --- Grid helpers ---
+
+const GRID_ROWS = 10;
+const GRID_COLS = 10;
+
+function createEmptyGrid(): boolean[][] {
+  return Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(false));
+}
+
+function countGridPanels(cells: boolean[][]): number {
+  return cells.reduce((sum, row) => sum + row.filter(Boolean).length, 0);
+}
+
+function getGridRowCounts(cells: boolean[][]): number[] {
+  return cells
+    .map((row) => row.filter(Boolean).length)
+    .filter((count) => count > 0);
+}
+
+function getGridActiveRows(cells: boolean[][]): number {
+  return cells.filter((row) => row.some(Boolean)).length;
+}
+
+function getGridMaxCols(cells: boolean[][]): number {
+  return cells.reduce((max, row) => Math.max(max, row.filter(Boolean).length), 0);
+}
+
+// --- Orientation type ---
+type Orientation = 'portrait' | 'landscape';
+
+// Portrait = tile (rails), Landscape = IBR/corrugated (direct brackets)
+// Tilt frame is separate (uses rows x cols, no grid)
+
 interface GroupState {
   id: string;
   label: string;
-  mountingType: string;
-  tiltRoofType: string;
+  mode: 'roof' | 'tilt_frame';
+  orientation: Orientation;      // for roof mode
+  roofSubType: 'ibr' | 'corrugated'; // for landscape roof
+  tiltRoofType: 'ibr' | 'corrugated'; // for tilt frame
   panelSource: 'database' | 'manual';
   panelId: string | null;
   widthMm: number | '';
-  rows: number | '';
-  cols: number | '';
+  cells: boolean[][];            // grid for roof mode
+  tiltRows: number | '';         // for tilt frame mode
+  tiltCols: number | '';         // for tilt frame mode
 }
 
 let groupCounter = 0;
@@ -48,18 +81,21 @@ function createGroup(overrides?: Partial<GroupState>): GroupState {
   return {
     id: crypto.randomUUID(),
     label: `Array ${groupCounter}`,
-    mountingType: 'ibr',
+    mode: 'roof',
+    orientation: 'landscape',
+    roofSubType: 'ibr',
     tiltRoofType: 'ibr',
     panelSource: 'database',
     panelId: null,
     widthMm: 1134,
-    rows: 2,
-    cols: 6,
+    cells: createEmptyGrid(),
+    tiltRows: 2,
+    tiltCols: 6,
     ...overrides,
   };
 }
 
-// --- Shared components ---
+// --- Shared result components ---
 
 function ItemsTable({ items, totalLabel, totalCents }: {
   items: MountingResultItem[];
@@ -105,7 +141,6 @@ function ItemsTable({ items, totalLabel, totalCents }: {
 function MountingResults({ result }: { result: MountingMultiResult }) {
   return (
     <Stack gap="lg">
-      {/* Per-group accordion */}
       {result.groups.length > 1 && (
         <Accordion variant="contained" radius="md">
           {result.groups.map((gr, i) => (
@@ -149,7 +184,6 @@ function MountingResults({ result }: { result: MountingMultiResult }) {
         </Accordion>
       )}
 
-      {/* Combined BoM */}
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Stack gap="md">
           <Title order={4}>
@@ -193,44 +227,28 @@ function MountingResults({ result }: { result: MountingMultiResult }) {
   );
 }
 
-// --- Grid helpers ---
+// --- Panel grid with solar-panel-shaped cells ---
 
-const GRID_ROWS = 10;
-const GRID_COLS = 10;
+// Portrait panel: tall rectangle. Landscape panel: wide rectangle.
+const CELL_PORTRAIT = { w: 24, h: 40 };
+const CELL_LANDSCAPE = { w: 40, h: 24 };
+const CELL_GAP = 2;
 
-function createEmptyGrid(): boolean[][] {
-  return Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(false));
-}
-
-function gridFromRowCounts(rows: number[]): boolean[][] {
-  const grid = createEmptyGrid();
-  for (let r = 0; r < rows.length && r < GRID_ROWS; r++) {
-    for (let c = 0; c < rows[r] && c < GRID_COLS; c++) {
-      grid[r][c] = true;
-    }
-  }
-  return grid;
-}
-
-function countGridPanels(cells: boolean[][]): number {
-  return cells.reduce((sum, row) => sum + row.filter(Boolean).length, 0);
-}
-
-function getGridActiveRows(cells: boolean[][]): number {
-  return cells.filter((row) => row.some(Boolean)).length;
-}
-
-function getGridMaxCols(cells: boolean[][]): number {
-  return cells.reduce((max, row) => Math.max(max, row.filter(Boolean).length), 0);
-}
-
-// --- Clickable grid component ---
-
-function PanelGrid({ cells, onChange }: { cells: boolean[][]; onChange: (cells: boolean[][]) => void }) {
+function PanelGrid({
+  cells,
+  orientation,
+  onChange,
+}: {
+  cells: boolean[][];
+  orientation: Orientation;
+  onChange: (cells: boolean[][]) => void;
+}) {
   const draggingRef = useRef(false);
   const targetRef = useRef(false);
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
+
+  const cellSize = orientation === 'portrait' ? CELL_PORTRAIT : CELL_LANDSCAPE;
 
   const handleMouseDown = (r: number, c: number) => {
     draggingRef.current = true;
@@ -259,13 +277,13 @@ function PanelGrid({ cells, onChange }: { cells: boolean[][]; onChange: (cells: 
   return (
     <div style={{ userSelect: 'none' }}>
       {/* Column numbers */}
-      <div style={{ display: 'flex', gap: 2, marginLeft: 28, marginBottom: 2 }}>
+      <div style={{ display: 'flex', gap: CELL_GAP, marginLeft: 28, marginBottom: 2 }}>
         {Array.from({ length: GRID_COLS }, (_, c) => (
-          <div key={c} style={{ width: 32, textAlign: 'center', fontSize: 10, color: '#868e96' }}>{c + 1}</div>
+          <div key={c} style={{ width: cellSize.w, textAlign: 'center', fontSize: 10, color: '#868e96' }}>{c + 1}</div>
         ))}
       </div>
       {cells.map((row, r) => (
-        <div key={r} style={{ display: 'flex', gap: 2, alignItems: 'center', marginBottom: 2 }}>
+        <div key={r} style={{ display: 'flex', gap: CELL_GAP, alignItems: 'center', marginBottom: CELL_GAP }}>
           <div style={{ width: 24, fontSize: 10, color: '#868e96', textAlign: 'right', marginRight: 2 }}>{r + 1}</div>
           {row.map((active, c) => (
             <div
@@ -273,13 +291,19 @@ function PanelGrid({ cells, onChange }: { cells: boolean[][]; onChange: (cells: 
               onMouseDown={(e) => { e.preventDefault(); handleMouseDown(r, c); }}
               onMouseEnter={() => handleMouseEnter(r, c)}
               style={{
-                width: 32,
-                height: 32,
+                width: cellSize.w,
+                height: cellSize.h,
                 backgroundColor: active ? '#228be6' : '#f1f3f5',
                 border: `1px solid ${active ? '#1971c2' : '#dee2e6'}`,
                 borderRadius: 3,
                 cursor: 'pointer',
                 transition: 'background-color 0.05s',
+                // Inner lines to look like a solar panel cell pattern
+                ...(active ? {
+                  backgroundImage: orientation === 'portrait'
+                    ? 'linear-gradient(0deg, transparent 24%, rgba(255,255,255,0.15) 25%, rgba(255,255,255,0.15) 26%, transparent 27%),linear-gradient(0deg, transparent 49%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 51%, transparent 52%),linear-gradient(0deg, transparent 74%, rgba(255,255,255,0.15) 75%, rgba(255,255,255,0.15) 76%, transparent 77%)'
+                    : 'linear-gradient(90deg, transparent 24%, rgba(255,255,255,0.15) 25%, rgba(255,255,255,0.15) 26%, transparent 27%),linear-gradient(90deg, transparent 49%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 51%, transparent 52%),linear-gradient(90deg, transparent 74%, rgba(255,255,255,0.15) 75%, rgba(255,255,255,0.15) 76%, transparent 77%)',
+                } : {}),
               }}
             />
           ))}
@@ -289,40 +313,17 @@ function PanelGrid({ cells, onChange }: { cells: boolean[][]; onChange: (cells: 
   );
 }
 
-// --- Photo tab state ---
-
-interface PhotoGroupState {
-  id: string;
-  label: string;
-  cells: boolean[][];
-}
-
 // --- Main page ---
 
 export default function BracketCalculatorPage() {
-  // Shared state
   const [panels, setPanels] = useState<Panel[]>([]);
   const [loadingPanels, setLoadingPanels] = useState(false);
-
-  // Manual tab state
   const [groups, setGroups] = useState<GroupState[]>(() => {
     groupCounter = 0;
     return [createGroup()];
   });
   const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState<MountingMultiResult | null>(null);
-
-  // Photo tab state
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [photoGroups, setPhotoGroups] = useState<PhotoGroupState[] | null>(null);
-  const [photoMountingType, setPhotoMountingType] = useState('ibr');
-  const [photoTiltRoofType, setPhotoTiltRoofType] = useState('ibr');
-  const [photoPanelSource, setPhotoPanelSource] = useState<'database' | 'manual'>('database');
-  const [photoPanelId, setPhotoPanelId] = useState<string | null>(null);
-  const [photoWidthMm, setPhotoWidthMm] = useState<number | ''>(1134);
-  const [photoCalculating, setPhotoCalculating] = useState(false);
-  const [photoResult, setPhotoResult] = useState<MountingMultiResult | null>(null);
 
   useEffect(() => {
     setLoadingPanels(true);
@@ -331,8 +332,6 @@ export default function BracketCalculatorPage() {
       .catch(() => notifications.show({ title: 'Error', message: 'Failed to load panels', color: 'red' }))
       .finally(() => setLoadingPanels(false));
   }, []);
-
-  // --- Manual tab handlers ---
 
   const updateGroup = useCallback((id: string, patch: Partial<GroupState>) => {
     setGroups((prev) => prev.map((g) => g.id === id ? { ...g, ...patch } : g));
@@ -349,13 +348,16 @@ export default function BracketCalculatorPage() {
       const source = prev.find((g) => g.id === id);
       if (!source) return prev;
       const copy = createGroup({
-        mountingType: source.mountingType,
+        mode: source.mode,
+        orientation: source.orientation,
+        roofSubType: source.roofSubType,
         tiltRoofType: source.tiltRoofType,
         panelSource: source.panelSource,
         panelId: source.panelId,
         widthMm: source.widthMm,
-        rows: source.rows,
-        cols: source.cols,
+        cells: source.cells.map((row) => [...row]),
+        tiltRows: source.tiltRows,
+        tiltCols: source.tiltCols,
       });
       const idx = prev.findIndex((g) => g.id === id);
       const next = [...prev];
@@ -371,16 +373,27 @@ export default function BracketCalculatorPage() {
   };
 
   const totalPanels = groups.reduce((sum, g) => {
-    const r = typeof g.rows === 'number' ? g.rows : 0;
-    const c = typeof g.cols === 'number' ? g.cols : 0;
-    return sum + r * c;
+    if (g.mode === 'tilt_frame') {
+      const r = typeof g.tiltRows === 'number' ? g.tiltRows : 0;
+      const c = typeof g.tiltCols === 'number' ? g.tiltCols : 0;
+      return sum + r * c;
+    }
+    return sum + countGridPanels(g.cells);
   }, 0);
 
   const handleCalculate = async () => {
+    // Validate all groups
     for (const g of groups) {
-      if (typeof g.rows !== 'number' || typeof g.cols !== 'number' || g.rows < 1 || g.cols < 1) {
-        notifications.show({ title: 'Validation', message: `[${g.label}] Rows and columns must be at least 1`, color: 'orange' });
-        return;
+      if (g.mode === 'tilt_frame') {
+        if (typeof g.tiltRows !== 'number' || typeof g.tiltCols !== 'number' || g.tiltRows < 1 || g.tiltCols < 1) {
+          notifications.show({ title: 'Validation', message: `[${g.label}] Rows and columns must be at least 1`, color: 'orange' });
+          return;
+        }
+      } else {
+        if (countGridPanels(g.cells) === 0) {
+          notifications.show({ title: 'Validation', message: `[${g.label}] Select at least one panel on the grid`, color: 'orange' });
+          return;
+        }
       }
       if (g.panelSource === 'database' && !g.panelId) {
         notifications.show({ title: 'Validation', message: `[${g.label}] Select a panel from the database`, color: 'orange' });
@@ -396,16 +409,29 @@ export default function BracketCalculatorPage() {
     setResult(null);
 
     try {
-      const apiGroups: MountingGroupInput[] = groups.map((g) => {
-        const resolvedType = g.mountingType === 'tilt_frame'
-          ? `tilt_frame_${g.tiltRoofType}` as any
-          : g.mountingType as any;
+      const apiGroups: IrregularGroupInput[] = groups.map((g) => {
+        let mountingType: string;
+        let rowCounts: number[];
 
-        const base: MountingGroupInput = {
+        if (g.mode === 'tilt_frame') {
+          mountingType = `tilt_frame_${g.tiltRoofType}`;
+          // Tilt frame: rectangular grid, just repeat cols for each row
+          const rows = g.tiltRows as number;
+          const cols = g.tiltCols as number;
+          rowCounts = Array(rows).fill(cols);
+        } else if (g.orientation === 'portrait') {
+          mountingType = 'tile';
+          rowCounts = getGridRowCounts(g.cells);
+        } else {
+          // landscape = IBR or corrugated
+          mountingType = g.roofSubType;
+          rowCounts = getGridRowCounts(g.cells);
+        }
+
+        const base: IrregularGroupInput = {
           label: g.label,
-          mounting_type: resolvedType,
-          rows: g.rows as number,
-          cols: g.cols as number,
+          mounting_type: mountingType as any,
+          row_counts: rowCounts,
         };
 
         if (g.panelSource === 'database') {
@@ -417,7 +443,7 @@ export default function BracketCalculatorPage() {
         return base;
       });
 
-      const data = await calculateMountingMulti(apiGroups);
+      const data = await calculateMountingIrregular(apiGroups);
       setResult(data);
     } catch (err: any) {
       notifications.show({
@@ -430,472 +456,201 @@ export default function BracketCalculatorPage() {
     }
   };
 
-  // --- Photo tab handlers ---
-
-  const handleAnalyzePhoto = async () => {
-    if (!photoFile) {
-      notifications.show({ title: 'Validation', message: 'Select a photo first', color: 'orange' });
-      return;
-    }
-
-    setAnalyzing(true);
-    setPhotoGroups(null);
-    setPhotoResult(null);
-
-    try {
-      const data = await analyzePhoto(photoFile);
-      if (data.groups.length === 0) {
-        notifications.show({ title: 'No Panels Detected', message: 'No solar panel arrays were detected in the photo. Try a clearer aerial image.', color: 'orange' });
-        setPhotoGroups([]);
-      } else {
-        setPhotoGroups(data.groups.map((g) => ({
-          id: crypto.randomUUID(),
-          label: g.label,
-          cells: gridFromRowCounts(g.rows),
-        })));
-      }
-    } catch (err: any) {
-      notifications.show({
-        title: 'Analysis Failed',
-        message: err.response?.data?.error || 'Failed to analyze photo',
-        color: 'red',
-      });
-    } finally {
-      setAnalyzing(false);
-    }
-  };
-
-  const updatePhotoGroup = (id: string, patch: Partial<PhotoGroupState>) => {
-    setPhotoGroups((prev) => prev ? prev.map((g) => g.id === id ? { ...g, ...patch } : g) : prev);
-    setPhotoResult(null);
-  };
-
-  const addPhotoGroup = () => {
-    setPhotoGroups((prev) => [
-      ...(prev || []),
-      { id: crypto.randomUUID(), label: `Array ${(prev?.length || 0) + 1}`, cells: createEmptyGrid() },
-    ]);
-    setPhotoResult(null);
-  };
-
-  const removePhotoGroup = (id: string) => {
-    setPhotoGroups((prev) => prev ? prev.filter((g) => g.id !== id) : prev);
-    setPhotoResult(null);
-  };
-
-  const photoTotalPanels = photoGroups
-    ? photoGroups.reduce((sum, g) => sum + countGridPanels(g.cells), 0)
-    : 0;
-
-  const handlePhotoCalculate = async () => {
-    if (!photoGroups || photoGroups.length === 0) return;
-
-    if (photoPanelSource === 'database' && !photoPanelId) {
-      notifications.show({ title: 'Validation', message: 'Select a panel from the database', color: 'orange' });
-      return;
-    }
-    if (photoPanelSource === 'manual' && (typeof photoWidthMm !== 'number' || photoWidthMm < 100)) {
-      notifications.show({ title: 'Validation', message: 'Enter a valid panel width (mm)', color: 'orange' });
-      return;
-    }
-
-    const resolvedType = photoMountingType === 'tilt_frame'
-      ? `tilt_frame_${photoTiltRoofType}` as any
-      : photoMountingType as any;
-
-    setPhotoCalculating(true);
-    setPhotoResult(null);
-
-    try {
-      // Extract row_counts from each grid (panels per row, skip empty rows)
-      const apiGroups: IrregularGroupInput[] = photoGroups
-        .filter((g) => countGridPanels(g.cells) > 0)
-        .map((g) => {
-          const rowCounts = g.cells
-            .map((row) => row.filter(Boolean).length)
-            .filter((count) => count > 0);
-          const base: IrregularGroupInput = {
-            label: g.label,
-            mounting_type: resolvedType,
-            row_counts: rowCounts,
-          };
-          if (photoPanelSource === 'database') {
-            base.panel_id = Number(photoPanelId);
-          } else {
-            base.width_mm = photoWidthMm as number;
-          }
-          return base;
-        });
-
-      if (apiGroups.length === 0) {
-        notifications.show({ title: 'Validation', message: 'No panels selected on any grid', color: 'orange' });
-        setPhotoCalculating(false);
-        return;
-      }
-
-      const data = await calculateMountingIrregular(apiGroups);
-      setPhotoResult(data);
-    } catch (err: any) {
-      notifications.show({
-        title: 'Calculation Failed',
-        message: err.response?.data?.error || 'Unexpected error',
-        color: 'red',
-      });
-    } finally {
-      setPhotoCalculating(false);
-    }
-  };
-
   return (
     <Stack gap="lg">
       <Title order={2}>Bracket Calculator</Title>
 
-      <Tabs defaultValue="manual">
-        <Tabs.List>
-          <Tabs.Tab value="manual" leftSection={<IconCalculator size={16} />}>Manual</Tabs.Tab>
-          <Tabs.Tab value="photo" leftSection={<IconPhoto size={16} />}>From Photo</Tabs.Tab>
-        </Tabs.List>
+      {groups.map((g) => {
+        const panelCount = g.mode === 'tilt_frame'
+          ? (typeof g.tiltRows === 'number' ? g.tiltRows : 0) * (typeof g.tiltCols === 'number' ? g.tiltCols : 0)
+          : countGridPanels(g.cells);
+        const activeRows = g.mode === 'roof' ? getGridActiveRows(g.cells) : 0;
+        const maxCols = g.mode === 'roof' ? getGridMaxCols(g.cells) : 0;
 
-        {/* ===== MANUAL TAB ===== */}
-        <Tabs.Panel value="manual" pt="md">
-          <Stack gap="lg">
-            {groups.map((g) => {
-              const panelQty = (typeof g.rows === 'number' && typeof g.cols === 'number')
-                ? g.rows * g.cols : 0;
+        return (
+          <Card key={g.id} shadow="sm" padding="lg" radius="md" withBorder>
+            <Stack gap="md">
+              {/* Header */}
+              <Group justify="space-between">
+                <TextInput
+                  value={g.label}
+                  onChange={(e) => updateGroup(g.id, { label: e.currentTarget.value })}
+                  variant="unstyled"
+                  styles={{ input: { fontWeight: 600, fontSize: '1.1rem' } }}
+                  style={{ flex: 1 }}
+                />
+                <Group gap="xs">
+                  <Badge variant="light" size="sm">
+                    {panelCount} panel{panelCount !== 1 ? 's' : ''}
+                  </Badge>
+                  {g.mode === 'roof' && panelCount > 0 && (
+                    <Badge variant="light" color="gray" size="sm">
+                      {activeRows}R x {maxCols}C
+                    </Badge>
+                  )}
+                  <ActionIcon
+                    variant="light"
+                    color="blue"
+                    title="Duplicate array"
+                    onClick={() => duplicateGroup(g.id)}
+                  >
+                    <IconCopy size={16} />
+                  </ActionIcon>
+                  <ActionIcon
+                    variant="light"
+                    color="red"
+                    title="Remove array"
+                    onClick={() => removeGroup(g.id)}
+                    disabled={groups.length <= 1}
+                  >
+                    <IconTrash size={16} />
+                  </ActionIcon>
+                </Group>
+              </Group>
 
-              return (
-                <Card key={g.id} shadow="sm" padding="lg" radius="md" withBorder>
-                  <Stack gap="md">
-                    <Group justify="space-between">
-                      <TextInput
-                        value={g.label}
-                        onChange={(e) => updateGroup(g.id, { label: e.currentTarget.value })}
-                        variant="unstyled"
-                        styles={{ input: { fontWeight: 600, fontSize: '1.1rem' } }}
-                        style={{ flex: 1 }}
-                      />
-                      <Group gap="xs">
-                        <ActionIcon
-                          variant="light"
-                          color="blue"
-                          title="Duplicate array"
-                          onClick={() => duplicateGroup(g.id)}
-                        >
-                          <IconCopy size={16} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="light"
-                          color="red"
-                          title="Remove array"
-                          onClick={() => removeGroup(g.id)}
-                          disabled={groups.length <= 1}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Group>
-                    </Group>
+              {/* Mode: Roof vs Tilt Frame */}
+              <Text fw={500}>Installation Type</Text>
+              <SegmentedControl
+                value={g.mode}
+                onChange={(v) => updateGroup(g.id, { mode: v as 'roof' | 'tilt_frame' })}
+                data={[
+                  { label: 'Roof Mount', value: 'roof' },
+                  { label: 'Tilt Frame (Flat Roof)', value: 'tilt_frame' },
+                ]}
+              />
 
-                    <Text fw={500}>Mounting Type</Text>
-                    <SegmentedControl
-                      value={g.mountingType}
-                      onChange={(v) => updateGroup(g.id, { mountingType: v })}
-                      data={[
-                        { label: 'IBR Roof', value: 'ibr' },
-                        { label: 'Corrugated Roof', value: 'corrugated' },
-                        { label: 'Tile Roof', value: 'tile' },
-                        { label: 'Tilt Frame', value: 'tilt_frame' },
-                      ]}
-                    />
-
-                    {g.mountingType === 'tilt_frame' && (
-                      <>
-                        <Text fw={500}>Tilt Frame Roof Type</Text>
-                        <SegmentedControl
-                          value={g.tiltRoofType}
-                          onChange={(v) => updateGroup(g.id, { tiltRoofType: v })}
-                          data={[
-                            { label: 'IBR', value: 'ibr' },
-                            { label: 'Corrugated', value: 'corrugated' },
-                          ]}
-                        />
-                      </>
-                    )}
-
-                    <Text fw={500}>Panel Source</Text>
-                    <SegmentedControl
-                      value={g.panelSource}
-                      onChange={(v) => updateGroup(g.id, { panelSource: v as 'database' | 'manual' })}
-                      data={[
-                        { label: 'Database', value: 'database' },
-                        { label: 'Manual', value: 'manual' },
-                      ]}
-                    />
-
-                    {g.panelSource === 'database' ? (
-                      <Select
-                        label="Panel"
-                        placeholder={loadingPanels ? 'Loading panels...' : 'Select approved panel'}
-                        searchable
-                        data={panels.map((p) => ({
-                          value: String(p.id),
-                          label: `${p.name} (${p.power_w}W)`,
-                        }))}
-                        value={g.panelId}
-                        onChange={(v) => updateGroup(g.id, { panelId: v })}
-                        rightSection={loadingPanels ? <Loader size={16} /> : undefined}
-                      />
-                    ) : (
-                      <NumberInput
-                        label="Panel Width (mm)"
-                        value={g.widthMm}
-                        onChange={(v) => updateGroup(g.id, { widthMm: v as number | '' })}
-                        min={100}
-                        max={3000}
-                        step={1}
-                      />
-                    )}
-
-                    <Group grow>
-                      <NumberInput
-                        label="Rows"
-                        value={g.rows}
-                        onChange={(v) => updateGroup(g.id, { rows: v as number | '' })}
-                        min={1}
-                        max={50}
-                      />
-                      <NumberInput
-                        label="Columns"
-                        value={g.cols}
-                        onChange={(v) => updateGroup(g.id, { cols: v as number | '' })}
-                        min={1}
-                        max={50}
-                      />
-                    </Group>
-
-                    <Text size="sm" c="dimmed">
-                      Panel qty: {typeof g.rows === 'number' ? g.rows : '?'} x {typeof g.cols === 'number' ? g.cols : '?'} = {panelQty}
-                    </Text>
-                  </Stack>
-                </Card>
-              );
-            })}
-
-            <Button
-              variant="light"
-              leftSection={<IconPlus size={16} />}
-              onClick={addGroup}
-              disabled={groups.length >= 10}
-            >
-              Add Array
-            </Button>
-
-            <Group justify="space-between" align="center">
-              <Text fw={500}>
-                Total: {totalPanels} panel{totalPanels !== 1 ? 's' : ''} across {groups.length} array{groups.length !== 1 ? 's' : ''}
-              </Text>
-              <Button
-                leftSection={<IconCalculator size={18} />}
-                onClick={handleCalculate}
-                loading={calculating}
-                size="md"
-              >
-                Calculate
-              </Button>
-            </Group>
-
-            {result && <MountingResults result={result} />}
-          </Stack>
-        </Tabs.Panel>
-
-        {/* ===== FROM PHOTO TAB ===== */}
-        <Tabs.Panel value="photo" pt="md">
-          <Stack gap="lg">
-            {/* Upload section */}
-            <Card shadow="sm" padding="lg" radius="md" withBorder>
-              <Stack gap="md">
-                <Title order={4}>Upload Roof Photo</Title>
-                <Text size="sm" c="dimmed">
-                  Upload an aerial or roof photo showing solar panels. AI will detect panel arrays and count rows/columns.
-                </Text>
-                <Group align="end">
-                  <FileInput
-                    label="Photo"
-                    placeholder="Select image..."
-                    accept="image/png,image/jpeg"
-                    value={photoFile}
-                    onChange={(f) => { setPhotoFile(f); setPhotoGroups(null); setPhotoResult(null); }}
-                    leftSection={<IconPhoto size={16} />}
-                    style={{ flex: 1 }}
+              {g.mode === 'roof' && (
+                <>
+                  {/* Orientation: Portrait (tile/rails) vs Landscape (IBR) */}
+                  <Text fw={500}>Panel Orientation</Text>
+                  <SegmentedControl
+                    value={g.orientation}
+                    onChange={(v) => updateGroup(g.id, { orientation: v as Orientation })}
+                    data={[
+                      { label: 'Landscape (IBR / Corrugated)', value: 'landscape' },
+                      { label: 'Portrait (Tile / Rails)', value: 'portrait' },
+                    ]}
                   />
-                  <Button
-                    leftSection={<IconUpload size={16} />}
-                    onClick={handleAnalyzePhoto}
-                    loading={analyzing}
-                    disabled={!photoFile}
-                  >
-                    {analyzing ? 'Analyzing photo with AI...' : 'Analyze'}
-                  </Button>
-                </Group>
-              </Stack>
-            </Card>
 
-            {/* Detected groups (editable) */}
-            {photoGroups !== null && (
-              <>
-                {photoGroups.length === 0 ? (
-                  <Alert color="orange" icon={<IconInfoCircle size={18} />}>
-                    No solar panel arrays were detected. You can add groups manually below.
-                  </Alert>
-                ) : (
-                  <Alert color="blue" icon={<IconInfoCircle size={18} />}>
-                    Detected {photoTotalPanels} panel{photoTotalPanels !== 1 ? 's' : ''} across {photoGroups.length} array{photoGroups.length !== 1 ? 's' : ''}. Edit below if needed.
-                  </Alert>
-                )}
-
-                {photoGroups.map((g) => {
-                  const groupPanels = countGridPanels(g.cells);
-                  const activeRows = getGridActiveRows(g.cells);
-                  const maxCols = getGridMaxCols(g.cells);
-
-                  return (
-                    <Card key={g.id} shadow="xs" padding="md" radius="md" withBorder>
-                      <Stack gap="sm">
-                        <Group justify="space-between">
-                          <TextInput
-                            value={g.label}
-                            onChange={(e) => updatePhotoGroup(g.id, { label: e.currentTarget.value })}
-                            variant="unstyled"
-                            styles={{ input: { fontWeight: 600, fontSize: '1rem' } }}
-                            style={{ flex: 1 }}
-                          />
-                          <Group gap="xs">
-                            <Badge variant="light" size="sm">
-                              {groupPanels} panel{groupPanels !== 1 ? 's' : ''}
-                            </Badge>
-                            <Badge variant="light" color="gray" size="sm">
-                              {activeRows}R x {maxCols}C
-                            </Badge>
-                            <ActionIcon
-                              variant="light"
-                              color="red"
-                              title="Remove array"
-                              onClick={() => removePhotoGroup(g.id)}
-                            >
-                              <IconTrash size={16} />
-                            </ActionIcon>
-                          </Group>
-                        </Group>
-
-                        <Text size="xs" c="dimmed">Click or drag to toggle panels:</Text>
-
-                        <PanelGrid
-                          cells={g.cells}
-                          onChange={(cells) => updatePhotoGroup(g.id, { cells })}
-                        />
-                      </Stack>
-                    </Card>
-                  );
-                })}
-
-                <Button
-                  variant="light"
-                  leftSection={<IconPlus size={16} />}
-                  onClick={addPhotoGroup}
-                  disabled={photoGroups.length >= 10}
-                  size="sm"
-                >
-                  Add Group
-                </Button>
-
-                {/* Mounting config */}
-                <Card shadow="sm" padding="lg" radius="md" withBorder>
-                  <Stack gap="md">
-                    <Title order={4}>Mounting Configuration</Title>
-
-                    <Text fw={500}>Mounting Type</Text>
-                    <SegmentedControl
-                      value={photoMountingType}
-                      onChange={setPhotoMountingType}
-                      data={[
-                        { label: 'IBR Roof', value: 'ibr' },
-                        { label: 'Corrugated Roof', value: 'corrugated' },
-                        { label: 'Tile Roof', value: 'tile' },
-                        { label: 'Tilt Frame', value: 'tilt_frame' },
-                      ]}
-                    />
-
-                    {photoMountingType === 'tilt_frame' && (
-                      <>
-                        <Text fw={500}>Tilt Frame Roof Type</Text>
-                        <SegmentedControl
-                          value={photoTiltRoofType}
-                          onChange={setPhotoTiltRoofType}
-                          data={[
-                            { label: 'IBR', value: 'ibr' },
-                            { label: 'Corrugated', value: 'corrugated' },
-                          ]}
-                        />
-                      </>
-                    )}
-
-                    <Text fw={500}>Panel Source</Text>
-                    <SegmentedControl
-                      value={photoPanelSource}
-                      onChange={(v) => setPhotoPanelSource(v as 'database' | 'manual')}
-                      data={[
-                        { label: 'Database', value: 'database' },
-                        { label: 'Manual', value: 'manual' },
-                      ]}
-                    />
-
-                    {photoPanelSource === 'database' ? (
-                      <Select
-                        label="Panel"
-                        placeholder={loadingPanels ? 'Loading panels...' : 'Select approved panel'}
-                        searchable
-                        data={panels.map((p) => ({
-                          value: String(p.id),
-                          label: `${p.name} (${p.power_w}W)`,
-                        }))}
-                        value={photoPanelId}
-                        onChange={setPhotoPanelId}
-                        rightSection={loadingPanels ? <Loader size={16} /> : undefined}
+                  {/* Sub-type for landscape: IBR vs Corrugated */}
+                  {g.orientation === 'landscape' && (
+                    <>
+                      <Text fw={500}>Roof Type</Text>
+                      <SegmentedControl
+                        value={g.roofSubType}
+                        onChange={(v) => updateGroup(g.id, { roofSubType: v as 'ibr' | 'corrugated' })}
+                        data={[
+                          { label: 'IBR', value: 'ibr' },
+                          { label: 'Corrugated', value: 'corrugated' },
+                        ]}
                       />
-                    ) : (
-                      <NumberInput
-                        label="Panel Width (mm)"
-                        value={photoWidthMm}
-                        onChange={(v) => setPhotoWidthMm(v as number | '')}
-                        min={100}
-                        max={3000}
-                        step={1}
-                      />
-                    )}
-                  </Stack>
-                </Card>
+                    </>
+                  )}
 
-                {/* Calculate */}
-                <Group justify="space-between" align="center">
-                  <Text fw={500}>
-                    Total: {photoTotalPanels} panel{photoTotalPanels !== 1 ? 's' : ''} across {photoGroups.length} array{photoGroups.length !== 1 ? 's' : ''}
-                  </Text>
-                  <Button
-                    leftSection={<IconCalculator size={18} />}
-                    onClick={handlePhotoCalculate}
-                    loading={photoCalculating}
-                    disabled={photoGroups.length === 0}
-                    size="md"
-                  >
-                    Calculate
-                  </Button>
-                </Group>
+                  {/* Panel grid */}
+                  <Text size="xs" c="dimmed">Click or drag to toggle panels:</Text>
+                  <PanelGrid
+                    cells={g.cells}
+                    orientation={g.orientation}
+                    onChange={(cells) => updateGroup(g.id, { cells })}
+                  />
+                </>
+              )}
 
-                {photoResult && <MountingResults result={photoResult} />}
-              </>
-            )}
-          </Stack>
-        </Tabs.Panel>
-      </Tabs>
+              {g.mode === 'tilt_frame' && (
+                <>
+                  <Text fw={500}>Roof Type</Text>
+                  <SegmentedControl
+                    value={g.tiltRoofType}
+                    onChange={(v) => updateGroup(g.id, { tiltRoofType: v as 'ibr' | 'corrugated' })}
+                    data={[
+                      { label: 'IBR', value: 'ibr' },
+                      { label: 'Corrugated', value: 'corrugated' },
+                    ]}
+                  />
+
+                  <Group grow>
+                    <NumberInput
+                      label="Rows"
+                      value={g.tiltRows}
+                      onChange={(v) => updateGroup(g.id, { tiltRows: v as number | '' })}
+                      min={1}
+                      max={50}
+                    />
+                    <NumberInput
+                      label="Columns"
+                      value={g.tiltCols}
+                      onChange={(v) => updateGroup(g.id, { tiltCols: v as number | '' })}
+                      min={1}
+                      max={50}
+                    />
+                  </Group>
+                </>
+              )}
+
+              {/* Panel source */}
+              <Text fw={500}>Panel Source</Text>
+              <SegmentedControl
+                value={g.panelSource}
+                onChange={(v) => updateGroup(g.id, { panelSource: v as 'database' | 'manual' })}
+                data={[
+                  { label: 'Database', value: 'database' },
+                  { label: 'Manual', value: 'manual' },
+                ]}
+              />
+
+              {g.panelSource === 'database' ? (
+                <Select
+                  label="Panel"
+                  placeholder={loadingPanels ? 'Loading panels...' : 'Select approved panel'}
+                  searchable
+                  data={panels.map((p) => ({
+                    value: String(p.id),
+                    label: `${p.name} (${p.power_w}W)`,
+                  }))}
+                  value={g.panelId}
+                  onChange={(v) => updateGroup(g.id, { panelId: v })}
+                  rightSection={loadingPanels ? <Loader size={16} /> : undefined}
+                />
+              ) : (
+                <NumberInput
+                  label="Panel Width (mm)"
+                  value={g.widthMm}
+                  onChange={(v) => updateGroup(g.id, { widthMm: v as number | '' })}
+                  min={100}
+                  max={3000}
+                  step={1}
+                />
+              )}
+            </Stack>
+          </Card>
+        );
+      })}
+
+      <Button
+        variant="light"
+        leftSection={<IconPlus size={16} />}
+        onClick={addGroup}
+        disabled={groups.length >= 10}
+      >
+        Add Array
+      </Button>
+
+      <Group justify="space-between" align="center">
+        <Text fw={500}>
+          Total: {totalPanels} panel{totalPanels !== 1 ? 's' : ''} across {groups.length} array{groups.length !== 1 ? 's' : ''}
+        </Text>
+        <Button
+          leftSection={<IconCalculator size={18} />}
+          onClick={handleCalculate}
+          loading={calculating}
+          size="md"
+        >
+          Calculate
+        </Button>
+      </Group>
+
+      {result && <MountingResults result={result} />}
     </Stack>
   );
 }

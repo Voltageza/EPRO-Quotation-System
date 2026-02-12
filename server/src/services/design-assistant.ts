@@ -87,6 +87,7 @@ export function recommendMppt(panelId: number, panelQty: number): MpptRecommenda
     let bestConfig: {
       strings: number;
       panelsPerString: number;
+      mpptQty: number;
       score: number;
       warnings: string[];
       blocked: boolean;
@@ -107,7 +108,11 @@ export function recommendMppt(panelId: number, panelQty: number): MpptRecommenda
         continue; // skip — too many panels per string for this MPPT
       }
 
-      const mpptQtyNeeded = numStrings; // 1 MPPT per string (SmartSolar single-tracker)
+      // Allow parallel strings per MPPT — Victron SmartSolar supports up to ~150% PV oversize
+      const pvPerString = pps * panel.power_w;
+      const stringsPerMppt = Math.max(1, Math.floor((mpptPowerW * 1.5) / pvPerString));
+      const mpptQtyNeeded = Math.ceil(numStrings / stringsPerMppt);
+
       const totalMpptCapacityW = mpptPowerW * mpptQtyNeeded;
       const oversizeRatio = totalPvW / totalMpptCapacityW;
       const oversizePct = Math.round(oversizeRatio * 100);
@@ -134,13 +139,13 @@ export function recommendMppt(panelId: number, panelQty: number): MpptRecommenda
       score -= Math.abs(1.0 - oversizeRatio) * 10;
 
       if (!bestConfig || score > bestConfig.score) {
-        bestConfig = { strings: numStrings, panelsPerString: pps, score, warnings, blocked };
+        bestConfig = { strings: numStrings, panelsPerString: pps, mpptQty: mpptQtyNeeded, score, warnings, blocked };
       }
     }
 
     if (!bestConfig) continue; // no valid equal-string config for this MPPT
 
-    const mpptQtyNeeded = bestConfig.strings;
+    const mpptQtyNeeded = bestConfig.mpptQty;
     const totalMpptCapacityW = mpptPowerW * mpptQtyNeeded;
     const oversizeRatio = totalPvW / totalMpptCapacityW;
 

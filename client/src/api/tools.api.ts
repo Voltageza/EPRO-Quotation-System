@@ -72,6 +72,7 @@ export interface IrregularGroupInput {
   panel_id?: number;
   width_mm?: number;
   row_counts: number[];
+  row_columns?: number[][];  // active column indices per row (position-aware)
 }
 
 export async function calculateMountingIrregular(groups: IrregularGroupInput[]): Promise<MountingMultiResult> {

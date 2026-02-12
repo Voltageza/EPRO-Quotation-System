@@ -128,6 +128,7 @@ export function resolveMountingIrregular(
   panel: PanelData,
   rowCounts: number[],
   mountingType: string,
+  rowColumns?: number[][],
 ): EngineResult {
   const db = getDb();
   const items: BomItem[] = [];
@@ -152,24 +153,41 @@ export function resolveMountingIrregular(
   };
 
   if (mountingType === 'ibr' || mountingType === 'corrugated') {
-    // Mid clamps: at each inner mounting line, count positions where both adjacent rows have a panel
-    // End clamps: top edge (row 0), bottom edge (last row), + transition edges where rows differ
     let midPositions = 0;
     let endPositions = 0;
 
-    // Top edge: all positions in first row are end clamps
-    endPositions += activeRows[0];
+    if (rowColumns && rowColumns.length > 0) {
+      // Position-aware calculation using actual column indices
+      const activeColRows = rowColumns.filter((cols) => cols.length > 0);
 
-    // Inner lines between adjacent rows
-    for (let i = 0; i < activeRows.length - 1; i++) {
-      const overlap = Math.min(activeRows[i], activeRows[i + 1]);
-      midPositions += overlap;
-      // Wider row has extra end positions at this transition
-      endPositions += Math.abs(activeRows[i] - activeRows[i + 1]);
+      // Top edge: all positions in first row
+      endPositions += activeColRows[0].length;
+
+      // Inner lines between adjacent rows: compare column-by-column
+      for (let i = 0; i < activeColRows.length - 1; i++) {
+        const topSet = new Set(activeColRows[i]);
+        const bottomSet = new Set(activeColRows[i + 1]);
+        for (const col of topSet) {
+          if (bottomSet.has(col)) midPositions++;
+          else endPositions++;
+        }
+        for (const col of bottomSet) {
+          if (!topSet.has(col)) endPositions++;
+        }
+      }
+
+      // Bottom edge: all positions in last row
+      endPositions += activeColRows[activeColRows.length - 1].length;
+    } else {
+      // Fallback: count-based (assumes left-aligned rows)
+      endPositions += activeRows[0];
+      for (let i = 0; i < activeRows.length - 1; i++) {
+        const overlap = Math.min(activeRows[i], activeRows[i + 1]);
+        midPositions += overlap;
+        endPositions += Math.abs(activeRows[i] - activeRows[i + 1]);
+      }
+      endPositions += activeRows[activeRows.length - 1];
     }
-
-    // Bottom edge: all positions in last row are end clamps
-    endPositions += activeRows[activeRows.length - 1];
 
     const midClamps = midPositions * 2;
     const endClamps = endPositions * 2;

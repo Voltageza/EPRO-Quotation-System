@@ -330,7 +330,8 @@ toolsRoutes.post('/mounting-calculate-irregular', (req: Request, res: Response) 
     const panelQty = rowCounts.reduce((s: number, r: number) => s + r, 0);
     totalPanels += panelQty;
 
-    const mountResult = resolveMountingIrregular(panel, rowCounts, g.mounting_type);
+    const rowColumns: number[][] | undefined = Array.isArray(g.row_columns) ? g.row_columns.filter((cols: number[]) => cols.length > 0) : undefined;
+    const mountResult = resolveMountingIrregular(panel, rowCounts, g.mounting_type, rowColumns);
 
     let subtotal = 0;
     const enrichedItems = mountResult.items.map((item) => {

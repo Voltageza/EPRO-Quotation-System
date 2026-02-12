@@ -187,15 +187,26 @@ EPRO-Quotation-System/
 ### Sprint 5b — Refactoring & Grid Editor (2026-02-12)
 
 - **Bracket Calculator Grid Editor** (`client/src/pages/tools/BracketCalculatorPage.tsx`)
-  - Replaced rows/cols numeric inputs with interactive 10x10 clickable grid
+  - Replaced rows/cols numeric inputs with interactive 10x15 clickable grid
   - Click or drag to toggle panel positions — supports irregular layouts natively
   - Panel cells styled to look like solar panels (portrait vs landscape orientations)
   - Row/column numbering on grid axes
-  - Multi-array support with accordion UI: add, duplicate, remove arrays
-  - Each array has independent mounting type, orientation, panel source, and grid
+  - Multi-array support: add, duplicate, remove arrays (up to 10)
+  - **Global Settings card** — shared mounting type, orientation, roof type, panel source
+  - Array cards show only label + grid (compact); "Custom settings" toggle for per-array overrides
+  - Smart array naming: reuses lowest available number when arrays are deleted
+  - Summary card shows per-array breakdown: rows, column span, panel count, row counts list
   - Tilt Frame mode uses rows/cols inputs (rectangular by nature)
-  - Uses `calculateMountingIrregular` API (row_counts based) for all calculations
+  - Uses `calculateMountingIrregular` API with `row_columns` for position-aware calculations
   - Combined BoM across all arrays with per-group breakdowns
+
+- **Position-Aware Clamp Calculation** (`server/src/services/rule-engine/mounting.engine.ts`)
+  - Fixed incorrect end/mid clamp counts for shifted/staggered panel rows
+  - Client sends `row_columns` (active column indices per row) alongside `row_counts`
+  - Server computes column-by-column overlap between adjacent rows using Set intersection
+  - Panels at same column in adjacent rows → mid clamp; unmatched positions → end clamp
+  - Falls back to count-based formula when `row_columns` not provided (backward compatible)
+  - Column span display: shows actual grid span (e.g., 9 cols) instead of max panels per row
 
 - **Quote Wizard Refactor** (`client/src/pages/quotes/QuoteWizardPage.tsx`)
   - Migrated to Mantine `useForm` hook for centralized form state and validation

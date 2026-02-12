@@ -8,6 +8,7 @@
     "migrate": "ts-node src/database/migrate.ts"
   },
   "dependencies": {
+    "@google/genai": "^1.41.0",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",

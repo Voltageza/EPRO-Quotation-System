@@ -118,3 +118,128 @@ export function resolveMounting(
 
   return { items, flags };
 }
+
+/**
+ * Irregular layout mounting calculation.
+ * Takes row_counts (panels per row) instead of a rectangular rows × cols grid.
+ * Calculates clamps based on actual adjacent-row overlap.
+ */
+export function resolveMountingIrregular(
+  panel: PanelData,
+  rowCounts: number[],
+  mountingType: string,
+): EngineResult {
+  const db = getDb();
+  const items: BomItem[] = [];
+  const flags: EngineResult['flags'] = [];
+
+  const activeRows = rowCounts.filter((r) => r > 0);
+  if (activeRows.length === 0) {
+    return { items, flags };
+  }
+
+  const panelQty = activeRows.reduce((s, r) => s + r, 0);
+  const maxCols = Math.max(...activeRows);
+
+  const addProduct = (sku: string, qty: number, note: string) => {
+    if (qty <= 0) return;
+    const product = db.prepare("SELECT id FROM products WHERE sku = ? AND is_active = 1").get(sku) as any;
+    if (product) {
+      items.push({ sku, product_id: product.id, section: 'mounting', quantity: qty, is_locked: false, source_rule: 'mounting', note });
+    } else {
+      flags.push({ code: 'MISSING_SKU', severity: 'warning', message: `Product ${sku} not found — mounting item skipped`, is_blocking: false });
+    }
+  };
+
+  if (mountingType === 'ibr' || mountingType === 'corrugated') {
+    // Mid clamps: at each inner mounting line, count positions where both adjacent rows have a panel
+    // End clamps: top edge (row 0), bottom edge (last row), + transition edges where rows differ
+    let midPositions = 0;
+    let endPositions = 0;
+
+    // Top edge: all positions in first row are end clamps
+    endPositions += activeRows[0];
+
+    // Inner lines between adjacent rows
+    for (let i = 0; i < activeRows.length - 1; i++) {
+      const overlap = Math.min(activeRows[i], activeRows[i + 1]);
+      midPositions += overlap;
+      // Wider row has extra end positions at this transition
+      endPositions += Math.abs(activeRows[i] - activeRows[i + 1]);
+    }
+
+    // Bottom edge: all positions in last row are end clamps
+    endPositions += activeRows[activeRows.length - 1];
+
+    const midClamps = midPositions * 2;
+    const endClamps = endPositions * 2;
+    const brackets = midClamps + endClamps;
+
+    addProduct('SOLAR40', endClamps, `End clamps: ${endPositions} edge positions × 2 = ${endClamps}`);
+    if (midClamps > 0) {
+      addProduct('SOLAR39', midClamps, `Mid clamps: ${midPositions} overlap positions × 2 = ${midClamps}`);
+    }
+    const bracketSku = mountingType === 'ibr' ? 'SOLAR45' : 'SOLAR46';
+    addProduct(bracketSku, brackets, `${mountingType.toUpperCase()} brackets: 1 per clamp = ${brackets}`);
+
+  } else if (mountingType === 'tilt_frame_ibr' || mountingType === 'tilt_frame_corrugated') {
+    // Tilt frame: per-panel independent, same as regular
+    const frontShort = 2 * panelQty;
+    const rearLong = 2 * panelQty;
+    const tiltEnds = 4 * panelQty;
+    const roofBrackets = 4 * panelQty;
+
+    addProduct('SOLAR50', frontShort, `Front short tilt brackets: 2 × ${panelQty} panels = ${frontShort}`);
+    addProduct('SOLAR51', rearLong, `Rear long tilt brackets: 2 × ${panelQty} panels = ${rearLong}`);
+    addProduct('SOLAR52', tiltEnds, `Tilt ends: 4 × ${panelQty} panels = ${tiltEnds}`);
+    const bracketSku = mountingType === 'tilt_frame_ibr' ? 'SOLAR45' : 'SOLAR46';
+    const bracketType = mountingType === 'tilt_frame_ibr' ? 'IBR' : 'Corrugated';
+    addProduct(bracketSku, roofBrackets, `${bracketType} brackets: 4 × ${panelQty} panels = ${roofBrackets}`);
+
+  } else {
+    // Tile: per-row rails, clamps based on adjacent-row overlap
+    const panelWidthMm = panel.width_mm || 1134;
+    const railLengthMm = 5850;
+    const hangerBoltSpacing = 1450;
+
+    let midPositions = 0;
+    let endPositions = 0;
+    let totalLinearMm = 0;
+    let totalSplices = 0;
+    let totalHangerBolts = 0;
+
+    // Each row has 2 rail lines (top + bottom)
+    for (const cols of activeRows) {
+      const railSpanMm = panelWidthMm * cols + 200;
+      totalLinearMm += railSpanMm * 2;
+      const piecesPerLine = Math.ceil(railSpanMm / railLengthMm);
+      totalSplices += (piecesPerLine - 1) * 2;
+      const boltsPerLine = Math.ceil(railSpanMm / hangerBoltSpacing) + 1;
+      totalHangerBolts += boltsPerLine * 2;
+    }
+
+    // Clamps: same overlap logic but on rail lines
+    // Top edge of row 0: 2 end clamps + (cols-1) mid clamps per rail...
+    // Actually for tile, clamps are along each rail (horizontal), not between rows.
+    // Each rail: 2 end clamps at ends + (cols-1) mid clamps between panels
+    for (const cols of activeRows) {
+      endPositions += 2 * 2; // 2 ends × 2 rails per row
+      midPositions += (cols - 1) * 2; // (cols-1) mids × 2 rails per row
+    }
+
+    const totalRails = Math.ceil(totalLinearMm / railLengthMm);
+
+    addProduct('SOLAR40', endPositions, `End clamps: 2 per rail × 2 rails × ${activeRows.length} rows = ${endPositions}`);
+    if (midPositions > 0) {
+      addProduct('SOLAR39', midPositions, `Mid clamps: per-row rail mids = ${midPositions}`);
+    }
+    addProduct('SOLAR42', totalRails, `Rails: ${totalLinearMm}mm total ÷ ${railLengthMm}mm = ${totalRails}`);
+    if (totalSplices > 0) {
+      addProduct('SOLAR41', totalSplices, `Rail splices: ${totalSplices}`);
+    }
+    addProduct('SOLAR44', totalHangerBolts, `Hanger bolts: ${totalHangerBolts}`);
+    addProduct('SOLAR43', totalHangerBolts, `L-brackets: 1 per hanger bolt = ${totalHangerBolts}`);
+  }
+
+  return { items, flags };
+}

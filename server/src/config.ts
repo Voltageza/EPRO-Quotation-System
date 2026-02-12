@@ -10,4 +10,5 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET || 'epro-default-secret',
   jwtExpiresIn: '24h',
   uploadDir: path.resolve(__dirname, '../uploads'),
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
 };

@@ -23,7 +23,7 @@ export interface EngineResult {
 }
 
 export interface QuoteInput {
-  system_class: 'V5' | 'V8' | 'V10' | 'V15';
+  system_class: string;
   // Panel
   panel_id: number;
   panel_qty: number;
@@ -79,6 +79,11 @@ export interface InverterData {
   id: number;
   product_id: number;
   system_class: string;
+  brand?: string;
   rated_va: number;
+  max_dc_voltage: number;
   ac_output_amps: number;
+  has_mppt?: number;
+  has_battery_port?: number;
+  max_pv_input_w?: number;
 }

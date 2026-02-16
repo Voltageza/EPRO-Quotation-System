@@ -12,6 +12,7 @@ import RulesPage from './pages/admin/RulesPage';
 import QuotesListPage from './pages/quotes/QuotesListPage';
 import QuoteWizardPage from './pages/quotes/QuoteWizardPage';
 import QuoteDetailPage from './pages/quotes/QuoteDetailPage';
+import SystemDesignerPage from './pages/quotes/SystemDesignerPage';
 import BracketCalculatorPage from './pages/tools/BracketCalculatorPage';
 import AppShell from './components/layout/AppShell';
 
@@ -46,8 +47,10 @@ export default function App() {
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/quotes" element={<QuotesListPage />} />
                 <Route path="/quotes/new" element={<QuoteWizardPage />} />
+                <Route path="/quotes/design/new" element={<SystemDesignerPage />} />
                 <Route path="/quotes/:id" element={<QuoteDetailPage />} />
                 <Route path="/quotes/:id/edit" element={<QuoteWizardPage />} />
+                <Route path="/quotes/:id/design" element={<SystemDesignerPage />} />
                 <Route path="/tools/bracket-calculator" element={<BracketCalculatorPage />} />
                 <Route path="/admin/products" element={<AdminRoute><ProductsPage /></AdminRoute>} />
                 <Route path="/admin/panels" element={<AdminRoute><PanelsPage /></AdminRoute>} />

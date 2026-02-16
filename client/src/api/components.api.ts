@@ -1,8 +1,20 @@
 import api from './client';
 
-export async function getInverters() {
-  const { data } = await api.get('/components/inverters');
+export async function getPanels(status?: string) {
+  const params = status ? { status } : {};
+  const { data } = await api.get('/panels', { params });
+  return data.panels;
+}
+
+export async function getInverters(brand?: string) {
+  const params = brand ? { brand } : {};
+  const { data } = await api.get('/components/inverters', { params });
   return data.inverters;
+}
+
+export async function getInverterById(id: number) {
+  const { data } = await api.get('/components/inverters');
+  return data.inverters.find((inv: any) => inv.id === id);
 }
 
 export async function getInverterByClass(systemClass: string) {
@@ -18,8 +30,9 @@ export async function createInverter(inverterData: {
   return data;
 }
 
-export async function getMppts() {
-  const { data } = await api.get('/components/mppts');
+export async function getMppts(brand?: string) {
+  const params = brand ? { brand } : {};
+  const { data } = await api.get('/components/mppts', { params });
   return data.mppts;
 }
 
@@ -52,8 +65,9 @@ export async function getRecommendedMppt(panelId: number, panelQty: number): Pro
   return data.recommendations;
 }
 
-export async function getBatteries() {
-  const { data } = await api.get('/components/batteries');
+export async function getBatteries(brand?: string) {
+  const params = brand ? { brand } : {};
+  const { data } = await api.get('/components/batteries', { params });
   return data.batteries;
 }
 

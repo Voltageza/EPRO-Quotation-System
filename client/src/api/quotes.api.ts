@@ -55,7 +55,7 @@ export async function getQuote(id: number) {
   return data;
 }
 
-export async function createQuote(input: { client_id: number; system_class: string }) {
+export async function createQuote(input: { client_id: number; system_class?: string; design_mode?: 'wizard' | 'designer'; brand?: string }) {
   const { data } = await api.post('/quotes', input);
   return data;
 }
@@ -73,6 +73,21 @@ export async function generateBom(quoteId: number) {
 export async function getQuoteVersions(quoteId: number) {
   const { data } = await api.get(`/quotes/${quoteId}/versions`);
   return data.versions;
+}
+
+export async function saveDesign(quoteId: number, graph: { nodes: any[]; edges: any[] }) {
+  const { data } = await api.post(`/quotes/${quoteId}/design`, { graph });
+  return data;
+}
+
+export async function loadDesign(quoteId: number) {
+  const { data } = await api.get(`/quotes/${quoteId}/design`);
+  return data.design;
+}
+
+export async function generateBomFromDesign(quoteId: number, designData: any) {
+  const { data } = await api.post(`/quotes/${quoteId}/generate-bom-from-design`, designData);
+  return data;
 }
 
 export async function downloadQuotePdf(quoteId: number) {

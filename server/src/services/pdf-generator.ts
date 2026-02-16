@@ -18,6 +18,7 @@ interface QuoteRow {
   id: number;
   quote_number: string;
   system_class: string;
+  design_mode: string;
   status: string;
   panel_qty: number;
   battery_qty: number;
@@ -95,8 +96,20 @@ export function generateQuotePdf(quoteId: number): Promise<Buffer> {
     doc.fontSize(11).font('Helvetica-Bold').fillColor('#000000')
       .text(quote.quote_number, 400, 50, { align: 'right' });
     doc.fontSize(9).font('Helvetica').fillColor('#666666')
-      .text(`Date: ${new Date(quote.created_at).toLocaleDateString('en-ZA')}`, 400, 67, { align: 'right' })
-      .text(`System: ${quote.system_class}`, 400, 80, { align: 'right' });
+      .text(`Date: ${new Date(quote.created_at).toLocaleDateString('en-ZA')}`, 400, 67, { align: 'right' });
+
+    // For designer-mode quotes, look up inverter brand
+    let systemLabel = quote.system_class;
+    if (quote.design_mode === 'designer') {
+      const inverter = db.prepare(`
+        SELECT i.brand, p.name FROM inverters i JOIN products p ON i.product_id = p.id
+        WHERE i.system_class = ? LIMIT 1
+      `).get(quote.system_class) as any;
+      if (inverter) {
+        systemLabel = `${inverter.brand} ${quote.system_class}`;
+      }
+    }
+    doc.text(`System: ${systemLabel}`, 400, 80, { align: 'right' });
 
     // Divider
     doc.moveTo(50, 100).lineTo(545, 100).strokeColor('#cccccc').stroke();
@@ -119,11 +132,15 @@ export function generateQuotePdf(quoteId: number): Promise<Buffer> {
     doc.fontSize(10).font('Helvetica');
 
     const summaryLines = [
-      `System Class: ${quote.system_class}`,
+      `System: ${systemLabel}`,
       `Panels: ${quote.panel_qty} (${quote.strings_count} string${quote.strings_count !== 1 ? 's' : ''} of ${quote.panels_per_string})`,
-      `Batteries: ${quote.battery_qty}`,
-      `MPPTs: ${quote.mppt_qty}`,
     ];
+    if (quote.battery_qty > 0) {
+      summaryLines.push(`Batteries: ${quote.battery_qty}`);
+    }
+    if (quote.mppt_qty > 0) {
+      summaryLines.push(`MPPTs: ${quote.mppt_qty}`);
+    }
     for (const line of summaryLines) {
       doc.text(line, 50, y);
       y += 14;

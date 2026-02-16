@@ -123,6 +123,19 @@ export function resolvePVStrings(
     items.push({ sku: 'SOLAR2', product_id: mc4Female.id, section: 'pv_cabling', quantity: stringsCount * 2, is_locked: false, source_rule: 'pv_string', note: 'MC4 female connectors' });
   }
 
+  // MC4 Y-splitters for parallel strings (when strings > MPPT inputs)
+  if (stringsCount > mpptQty) {
+    const parallelJoins = stringsCount - mpptQty;
+    const y1 = db.prepare("SELECT id FROM products WHERE sku = 'MC4/Y1' AND is_active = 1").get() as any;
+    const y2 = db.prepare("SELECT id FROM products WHERE sku = 'MC4/Y2' AND is_active = 1").get() as any;
+    if (y1) {
+      items.push({ sku: 'MC4/Y1', product_id: y1.id, section: 'pv_cabling', quantity: parallelJoins, is_locked: false, source_rule: 'pv_string_y_splitter', note: `MC4 Y-Splitter 1M-2F (${parallelJoins} parallel joins)` });
+    }
+    if (y2) {
+      items.push({ sku: 'MC4/Y2', product_id: y2.id, section: 'pv_cabling', quantity: parallelJoins, is_locked: false, source_rule: 'pv_string_y_splitter', note: `MC4 Y-Splitter 1F-2M (${parallelJoins} parallel joins)` });
+    }
+  }
+
   // Panel wire from MPPT to DB (6mm)
   const panelWire = db.prepare("SELECT id FROM products WHERE sku = 'P/W' AND is_active = 1").get() as any;
   if (panelWire) {

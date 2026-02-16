@@ -4,7 +4,7 @@ import {
   Select, Button, ActionIcon, Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconEye, IconPlus, IconCopy } from '@tabler/icons-react';
+import { IconEye, IconPlus, IconCopy, IconBrush } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { getQuotes, cloneQuote } from '../../api/quotes.api';
 
@@ -13,6 +13,7 @@ interface Quote {
   quote_number: string;
   client_name: string;
   system_class: string;
+  design_mode: string;
   status: string;
   panel_qty: number | null;
   battery_qty: number | null;
@@ -27,7 +28,10 @@ const statusColor: Record<string, string> = {
   draft: 'gray', pending: 'yellow', approved: 'green', sent: 'blue', rejected: 'red', expired: 'orange',
 };
 
-const classColor: Record<string, string> = { V5: 'blue', V8: 'teal', V10: 'orange', V15: 'red' };
+const classColor: Record<string, string> = {
+  V5: 'blue', V8: 'teal', V10: 'orange', V15: 'red',
+  ATT5: 'violet', ATT10: 'grape', SG5: 'cyan', SG8: 'teal', SG10: 'lime', SG10RT: 'lime',
+};
 
 export default function QuotesListPage() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -68,8 +72,11 @@ export default function QuotesListPage() {
             onChange={setStatusFilter}
             w={160}
           />
-          <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/quotes/new')}>
-            New Quote
+          <Button variant="outline" leftSection={<IconPlus size={16} />} onClick={() => navigate('/quotes/new')}>
+            Wizard
+          </Button>
+          <Button leftSection={<IconBrush size={16} />} onClick={() => navigate('/quotes/design/new')}>
+            New Design
           </Button>
         </Group>
       </Group>
@@ -88,6 +95,7 @@ export default function QuotesListPage() {
                 <Table.Th>Quote #</Table.Th>
                 <Table.Th>Client</Table.Th>
                 <Table.Th>System</Table.Th>
+                <Table.Th>Mode</Table.Th>
                 <Table.Th ta="center">Panels</Table.Th>
                 <Table.Th ta="center">Batteries</Table.Th>
                 <Table.Th ta="right">Total</Table.Th>
@@ -105,6 +113,11 @@ export default function QuotesListPage() {
                   <Table.Td>{q.client_name}</Table.Td>
                   <Table.Td>
                     <Badge color={classColor[q.system_class] || 'gray'}>{q.system_class}</Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge size="xs" variant="light" color={q.design_mode === 'designer' ? 'violet' : 'gray'}>
+                      {q.design_mode === 'designer' ? 'Design' : 'Wizard'}
+                    </Badge>
                   </Table.Td>
                   <Table.Td ta="center">{q.panel_qty ?? '—'}</Table.Td>
                   <Table.Td ta="center">{q.battery_qty ?? '—'}</Table.Td>

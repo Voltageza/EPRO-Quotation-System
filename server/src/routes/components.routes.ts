@@ -8,16 +8,27 @@ componentRoutes.use(authenticate);
 
 // === INVERTERS ===
 
-// GET /api/v1/components/inverters
-componentRoutes.get('/inverters', (_req: Request, res: Response) => {
+// GET /api/v1/components/inverters?brand=Victron
+componentRoutes.get('/inverters', (req: Request, res: Response) => {
   const db = getDb();
-  const inverters = db.prepare(`
+  const brand = req.query.brand as string | undefined;
+
+  let query = `
     SELECT i.*, p.sku, p.name, p.retail_price, p.is_active
     FROM inverters i
     JOIN products p ON i.product_id = p.id
     WHERE p.is_active = 1
-    ORDER BY i.rated_va
-  `).all();
+  `;
+  const params: any[] = [];
+
+  if (brand) {
+    query += ' AND i.brand = ?';
+    params.push(brand);
+  }
+
+  query += ' ORDER BY i.brand, i.rated_va';
+
+  const inverters = db.prepare(query).all(...params);
   res.json({ inverters });
 });
 
@@ -81,16 +92,27 @@ componentRoutes.get('/mppts/recommend', (req: Request, res: Response) => {
   }
 });
 
-// GET /api/v1/components/mppts
-componentRoutes.get('/mppts', (_req: Request, res: Response) => {
+// GET /api/v1/components/mppts?brand=Victron
+componentRoutes.get('/mppts', (req: Request, res: Response) => {
   const db = getDb();
-  const mppts = db.prepare(`
+  const brand = req.query.brand as string | undefined;
+
+  let query = `
     SELECT m.*, p.sku, p.name, p.retail_price, p.is_active
     FROM mppts m
     JOIN products p ON m.product_id = p.id
     WHERE p.is_active = 1
-    ORDER BY m.max_pv_voltage, m.max_charge_a
-  `).all();
+  `;
+  const params: any[] = [];
+
+  if (brand) {
+    query += ' AND m.brand = ?';
+    params.push(brand);
+  }
+
+  query += ' ORDER BY m.max_pv_voltage, m.max_charge_a';
+
+  const mppts = db.prepare(query).all(...params);
   res.json({ mppts });
 });
 
@@ -119,16 +141,27 @@ componentRoutes.post('/mppts', requireRole('admin'), (req: Request, res: Respons
 
 // === BATTERIES ===
 
-// GET /api/v1/components/batteries
-componentRoutes.get('/batteries', (_req: Request, res: Response) => {
+// GET /api/v1/components/batteries?brand=Victron
+componentRoutes.get('/batteries', (req: Request, res: Response) => {
   const db = getDb();
-  const batteries = db.prepare(`
+  const brand = req.query.brand as string | undefined;
+
+  let query = `
     SELECT b.*, p.sku, p.name, p.retail_price, p.is_active
     FROM batteries b
     JOIN products p ON b.product_id = p.id
     WHERE p.is_active = 1
-    ORDER BY b.capacity_kwh
-  `).all();
+  `;
+  const params: any[] = [];
+
+  if (brand) {
+    query += ' AND b.brand = ?';
+    params.push(brand);
+  }
+
+  query += ' ORDER BY b.capacity_kwh';
+
+  const batteries = db.prepare(query).all(...params);
   res.json({ batteries });
 });
 

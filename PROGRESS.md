@@ -1,6 +1,6 @@
 # EPRO Quotation System — Progress Report
 
-**Last updated:** 2026-02-12
+**Last updated:** 2026-02-15
 
 ---
 
@@ -51,7 +51,7 @@
   - Read-only view with client info, system config, full BoM table
   - Section subtotals, pricing summary (subtotal, VAT 15%, total in ZAR)
   - Flags/warnings display
-  - Actions: Download PDF, Edit (draft/review only), Approve, Mark Sent
+  - Actions: Download PDF, Edit (draft/review only), Approve, Mark Sent, Clone
 
 - **PDF Generator** (`server/src/services/pdf-generator.ts`)
   - PDFKit A4 layout with company header ("Electrical Pro")
@@ -59,92 +59,6 @@
   - Totals: subtotal, VAT, total in ZAR currency format
   - Disclaimer, page numbers, footer on every page
   - Endpoint: `GET /api/v1/quotes/:id/pdf` → downloads `EPQ-YYYY-NNNN.pdf`
-
-- **Routes wired in App.tsx:**
-  - `/quotes/new` → QuoteWizardPage
-  - `/quotes/:id` → QuoteDetailPage
-  - `/quotes/:id/edit` → QuoteWizardPage (edit mode)
-
-- **Client API addition:** `downloadQuotePdf(quoteId)` in `quotes.api.ts`
-
----
-
-## How to Start the App
-
-```bash
-# Kill any old server on port 3000 (Windows)
-netstat -ano | findstr :3000
-taskkill /PID <pid> /F
-
-# Start server (serves both API and built client)
-cd EPRO-Quotation-System/server
-npx ts-node src/index.ts
-
-# If client needs rebuilding:
-cd EPRO-Quotation-System/client
-npm run build
-```
-
-**Access:** http://localhost:3000
-**Login:** admin / changeme
-
----
-
-## Key Architecture
-
-```
-EPRO-Quotation-System/
-├── client/                    # React 18 + Vite + Mantine v7
-│   └── src/
-│       ├── api/               # Axios API functions
-│       │   ├── client.ts      # Axios instance with JWT interceptor
-│       │   ├── quotes.api.ts  # Quotes, clients, BoM, PDF download
-│       │   ├── panels.api.ts  # Panel CRUD + validation
-│       │   ├── components.api.ts  # Inverters, MPPTs, batteries, MPPT recommend
-│       │   └── tools.api.ts       # Bracket calculator API         ← Sprint 5a
-│       ├── pages/
-│       │   ├── quotes/
-│       │   │   ├── QuotesListPage.tsx
-│       │   │   ├── QuoteWizardPage.tsx    ← Sprint 4 + 5a updates
-│       │   │   └── QuoteDetailPage.tsx    ← Sprint 4
-│       │   ├── tools/
-│       │   │   └── BracketCalculatorPage.tsx  ← Sprint 5a
-│       │   ├── admin/         # Products, Panels, Components, Rules, Pricing, Users
-│       │   ├── DashboardPage.tsx
-│       │   └── LoginPage.tsx
-│       └── App.tsx            # Route definitions
-│
-├── server/                    # Node.js + Express + TypeScript
-│   └── src/
-│       ├── routes/
-│       │   ├── quotes.routes.ts   # Quotes CRUD + BoM + PDF endpoint
-│       │   ├── auth.routes.ts
-│       │   ├── products.routes.ts
-│       │   ├── panels.routes.ts
-│       │   ├── components.routes.ts  # + MPPT recommend endpoint   ← Sprint 5a
-│       │   ├── tools.routes.ts       # Bracket calculator endpoint ← Sprint 5a
-│       │   └── admin.routes.ts
-│       ├── services/
-│       │   ├── pdf-generator.ts       ← Sprint 4
-│       │   ├── pricing.service.ts
-│       │   ├── design-assistant.ts    # MPPT auto-suggestion       ← Sprint 5a
-│       │   └── rule-engine/           # 8 engine modules + types
-│       ├── database/
-│       │   ├── connection.ts          # SQLite (better-sqlite3, WAL)
-│       │   ├── migrate.ts            # Schema + seeds (001–005)
-│       └── index.ts                   # Express app entry
-│
-└── data/                      # SQLite DB file
-```
-
-## Rule Engine Sections (11 total)
-`inverter`, `solar_panels`, `battery`, `dc_battery`, `pv_cabling`, `pv_dc_protection`, `ac_cabling`, `ac_protection`, `mounting`, `labour`, `travel`
-
-## Test Data
-- 1 client: "Test Client" (0821234567, test@example.com)
-- 1 quote: EPQ-2026-0001 — V10, 12 panels (3 strings of 4), 1 battery, 2 MPPTs
-- 38 BoM items, R136,491.28 total
-- 4 inverters (V5/V8/V10/V15), 3 MPPTs, 1 battery, 1 approved panel
 
 ### Sprint 5a — Bracket Calculator & Mounting Engine Overhaul ✅ (Completed 2026-02-10)
 
@@ -158,82 +72,199 @@ EPRO-Quotation-System/
   - Flags/warnings displayed as Alert components
 
 - **Mounting Engine Rewrite** (`server/src/services/rule-engine/mounting.engine.ts`)
-  - Corrected formulas for all 5 mounting types:
-    - **IBR/Corrugated:** Panels landscape, mounting lines = rows+1. Outer 2 lines → end clamps (2 per panel per line), inner lines → mid clamps (2 per panel per line), 1 bracket per clamp (IBR or corrugated)
-    - **Tile:** Panels portrait, independent rails per row (2 × rows). End clamps at rail ends (2 per rail), mid clamps between panels along rail ((cols-1) per rail). Rails optimized with offcut reuse. Hanger bolts at 1,450mm spacing
-    - **Tilt Frame (IBR/Corrugated):** Each panel independent — 2 front short + 2 rear long brackets + 4 tilt ends + 4 IBR or corrugated roof brackets per panel
-  - New products seeded: SOLAR45 (IBR bracket), SOLAR46 (corrugated bracket), SOLAR50 (front short tilt), SOLAR51 (rear long tilt), SOLAR52 (tilt ends)
-
-- **Tools API** (`server/src/routes/tools.routes.ts`)
-  - `POST /api/v1/tools/mounting-calculate` — auth-protected, read-only
-  - Accepts panel_id or manual width_mm, mounting type, rows, cols
-  - Returns enriched items with prices + flags + grand total
+  - Corrected formulas for all 5 mounting types (IBR, Corrugated, Tile, Tilt Frame IBR/Corrugated)
 
 - **MPPT Design Assistant** (`server/src/services/design-assistant.ts`)
   - `GET /api/v1/components/mppts/recommend?panel_id=X&panel_qty=Y`
-  - Calculates optimal MPPT configurations based on cold Voc, string voltage limits, current limits, and capacity scoring
-  - Returns top 3 recommendations with warnings and utilization %
-  - Auto-fills MPPT selection in Quote Wizard (Step 3) with debounced 500ms trigger
+  - Auto-fills MPPT selection in Quote Wizard Step 3
 
-- **Quote Wizard Updates** (`client/src/pages/quotes/QuoteWizardPage.tsx`)
-  - Step 4: Mounting type selector with tilt frame sub-selector (IBR/Corrugated)
-  - Step 3: MPPT auto-recommendation alert with manual override indicator
-  - Mounting type, rows, cols saved to quote and passed to BoM generation
+### Sprint 5b — Refactoring & Grid Editor ✅ (Completed 2026-02-12)
 
-- **DB Migration 005** — Added `mounting_type`, `mounting_rows`, `mounting_cols` columns to quotes table
+- **Bracket Calculator Grid Editor** — interactive 10x15 clickable grid, multi-array support
+- **Position-Aware Clamp Calculation** — column-by-column overlap between adjacent rows
+- **Quote Wizard Refactor** — Mantine `useForm`, beforeunload guard, per-step validation
+- **MPPT Design Assistant Improvements** — multiple parallel strings per MPPT model
+- **Photo-Based Panel Layout Analyzer** — Gemini 2.5 Flash vision for aerial photo analysis
 
-- **Navigation** — Added "Tools" section in sidebar with Bracket Calculator link (visible to all users)
+### Sprint 5c — Dashboard Visual Overhaul ✅ (Completed 2026-02-13)
 
-### Sprint 5b — Refactoring & Grid Editor (2026-02-12)
+- Gradient accent stat cards, Quote Pipeline progress bar, RingProgress for system classes
+- Revenue by System Class chart, improved Recent Quotes table, skeleton loading
 
-- **Bracket Calculator Grid Editor** (`client/src/pages/tools/BracketCalculatorPage.tsx`)
-  - Replaced rows/cols numeric inputs with interactive 10x15 clickable grid
-  - Click or drag to toggle panel positions — supports irregular layouts natively
-  - Panel cells styled to look like solar panels (portrait vs landscape orientations)
-  - Row/column numbering on grid axes
-  - Multi-array support: add, duplicate, remove arrays (up to 10)
-  - **Global Settings card** — shared mounting type, orientation, roof type, panel source
-  - Array cards show only label + grid (compact); "Custom settings" toggle for per-array overrides
-  - Smart array naming: reuses lowest available number when arrays are deleted
-  - Summary card shows per-array breakdown: rows, column span, panel count, row counts list
-  - Tilt Frame mode uses rows/cols inputs (rectangular by nature)
-  - Uses `calculateMountingIrregular` API with `row_columns` for position-aware calculations
-  - Combined BoM across all arrays with per-group breakdowns
+### Sprint 6 — Node-Based Solar System Designer ✅ (Completed 2026-02-15)
 
-- **Position-Aware Clamp Calculation** (`server/src/services/rule-engine/mounting.engine.ts`)
-  - Fixed incorrect end/mid clamp counts for shifted/staggered panel rows
-  - Client sends `row_columns` (active column indices per row) alongside `row_counts`
-  - Server computes column-by-column overlap between adjacent rows using Set intersection
-  - Panels at same column in adjacent rows → mid clamp; unmatched positions → end clamp
-  - Falls back to count-based formula when `row_columns` not provided (backward compatible)
-  - Column span display: shows actual grid span (e.g., 9 cols) instead of max panels per row
+**Goal:** Replace the linear 5-step wizard with a visual node-based designer (like n8n) that supports multiple inverter brands. Components are draggable nodes, wiring is edges with auto-calculated cable specs.
 
-- **Quote Wizard Refactor** (`client/src/pages/quotes/QuoteWizardPage.tsx`)
-  - Migrated to Mantine `useForm` hook for centralized form state and validation
-  - Added `useWindowEvent('beforeunload')` — warns before closing unsaved changes
-  - Extracted constants: `SECTION_ORDER`, `SECTION_LABELS`, `MOUNTING_LABELS`
-  - Added `extractError()` helper for better API error messages (401, 404, 400 handling)
-  - Per-step field validation via `STEP_FIELDS` map
-  - Dynamic step descriptions showing selected client, system class, panel info, totals
+#### Sprint 6a — Canvas Foundation + DB Schema
+- **Migration 006** (`server/src/database/migrations/006_node_designer.ts`)
+  - Recreated `inverters` table with `brand`, `has_mppt`, `has_battery_port`, `max_pv_input_w` columns
+  - Added `brand` column to `mppts`, `batteries`, `products` tables
+  - Relaxed `quotes` table: removed `system_class` CHECK constraint, added `design_mode` ('wizard' | 'designer')
+  - Created `quote_designs` table (stores React Flow graph JSON per quote)
+  - Seeded Atess (ATT5, ATT10) and Sungrow (SG5, SG10) inverters + batteries (placeholder specs)
+  - Seeded `rule_entries` for all new system classes across dc_battery, ac_cable, ac_protection, labour
+- **6 Custom React Flow Nodes:**
+  - `SolarPanelArrayNode` — panel model + qty, `dc-pv-out` handle
+  - `InverterNode` — brand-aware conditional ports (Victron: MPPT+battery+AC; Sungrow: PV-in+AC; Atess: PV-in+battery+AC)
+  - `MpptNode` — `pv-in` + `dc-out` handles
+  - `BatteryNode` — `dc-out` handle
+  - `DistributionBoardNode` — `ac-in` + `ac-grid-out`
+  - `GridConnectionNode` — `ac-in`
+- **ComponentPalette** — left sidebar with draggable node cards grouped by category
+- **NodeConfigPanel** — right sidebar with dynamic forms per node type (brand→model cascading select)
+- **DesignerCanvas** — React Flow wrapper with drag-drop, snap grid, minimap, connection validation
+- **SystemDesignerPage** — 3-panel layout: palette | canvas | config tabs (Config/Settings/BoM)
+- **API endpoints:** design save/load (`POST/GET /api/v1/quotes/:id/design`), brand-filtered components
 
-- **MPPT Design Assistant Improvements** (`server/src/services/design-assistant.ts`)
-  - Changed from "1 string per MPPT" to "multiple parallel strings per MPPT" model
-  - Victron SmartSolar supports ~150% PV oversizing — `stringsPerMppt` now calculated
-  - Improved scoring: penalizes excessive MPPTs, rewards 80-120% utilization
-  - Better oversize warnings at >120% and >130% thresholds
+#### Sprint 6b — Connections & Auto Wire Calculation
+- **WiringEdge** — custom edge with color-coded path, distance popover (NumberInput), debounced wire gauge calculation
+- **Connection validation matrix** — typed handle compatibility (pv-dc, mppt-dc, battery-dc, ac-power, ac-grid)
+- **Wire calculation endpoint** (`POST /api/v1/design/calculate-wire`) — reuses existing engine modules
 
-- **Photo-Based Panel Layout Analyzer** (Gemini AI integration)
-  - `POST /api/v1/tools/mounting-analyze-photo` — upload aerial/roof photo
-  - Gemini 2.5 Flash vision model detects panel arrays and counts per-row
-  - Returns structured JSON: groups with labels and row counts
-  - Photo analysis results can feed directly into irregular mounting calculator
+#### Sprint 6c — Protection, BoM Generation & Side Panels
+- **Graph-to-BoM Generator** (`server/src/services/graph-bom-generator.ts`)
+  - Traverses design graph nodes/edges → calls existing engine modules
+  - Handles integrated MPPT (Sungrow/Atess) by creating synthetic MpptData from inverter specs
+  - Auto-inserts DC/AC protection based on connections
+- **System Accessories Engine** (`server/src/services/rule-engine/system-accessories.engine.ts`)
+  - Brand-aware: Victron gets VE Direct + RJ45 + GX Cerbo; Atess gets communication cable; Sungrow gets nothing (built-in WiFi)
+- **MountingSidePanel**, **LabourTravelPanel** — settings tab forms
+- **BomPreviewPanel** — collapsible BoM grouped by section, flags, totals, Generate/Finalize/PDF buttons
+
+#### Sprint 6d — Integration & Polish
+- **QuotesListPage** — brand colors for ATT5/ATT10/SG5/SG10, "New Design" button, Mode column (Design vs Wizard)
+- **QuoteDetailPage** — `design_mode`-aware Edit routing, Designer badge
+- **DashboardPage** — brand colors for new system classes, "New Quote" routes to designer
+- **PDF Generator** — brand-aware system label in header + summary, conditional battery/MPPT display
+- **Clone** — copies `quote_designs` graph + BoM items for designer-mode quotes
+- **Bug fixes:**
+  - Fixed SQLite FK references to `quotes_backup` (caused by `ALTER TABLE RENAME` updating FKs in dependent tables)
+  - Removed non-existent `mounting_type`/`mounting_rows`/`mounting_cols` columns from clone + generate-bom endpoints
+
+**New dependency:** `@xyflow/react` v12 (React Flow)
 
 ---
 
-## What's Next (Potential Sprint 5+ Ideas)
+## How to Start the App
+
+```bash
+# Kill any old server on port 3000 (Windows)
+netstat -ano | findstr :3000
+taskkill /PID <pid> /F
+
+# If client needs rebuilding:
+cd EPRO-Quotation-System/client
+npm run build
+
+# Start server (serves both API and built client)
+cd EPRO-Quotation-System/server
+npx ts-node src/index.ts
+```
+
+**Access:** http://localhost:3000
+**Login:** admin / changeme
+
+---
+
+## Key Architecture
+
+```
+EPRO-Quotation-System/
+├── client/                    # React 18 + Vite + Mantine v7 + React Flow v12
+│   └── src/
+│       ├── api/               # Axios API functions
+│       │   ├── client.ts      # Axios instance with JWT interceptor
+│       │   ├── quotes.api.ts  # Quotes, clients, BoM, PDF, design save/load
+│       │   ├── panels.api.ts  # Panel CRUD + validation
+│       │   ├── components.api.ts  # Inverters, MPPTs, batteries (brand-filtered)
+│       │   └── tools.api.ts       # Bracket calculator API
+│       ├── pages/
+│       │   ├── quotes/
+│       │   │   ├── QuotesListPage.tsx      # Quote list + brand/mode columns
+│       │   │   ├── QuoteWizardPage.tsx     # Legacy 5-step wizard (Victron)
+│       │   │   ├── QuoteDetailPage.tsx     # Quote detail + mode-aware actions
+│       │   │   └── SystemDesignerPage.tsx  # Node-based designer (all brands)
+│       │   ├── tools/
+│       │   │   └── BracketCalculatorPage.tsx
+│       │   ├── admin/         # Products, Panels, Components, Rules, Pricing, Users
+│       │   ├── DashboardPage.tsx
+│       │   └── LoginPage.tsx
+│       ├── components/
+│       │   └── designer/      # Node-based designer components
+│       │       ├── DesignerCanvas.tsx
+│       │       ├── nodes/     # 6 custom node types + nodeTypes.ts registry
+│       │       ├── edges/     # WiringEdge + edgeTypes.ts registry
+│       │       ├── panels/    # ComponentPalette, NodeConfigPanel, MountingSidePanel,
+│       │       │              # LabourTravelPanel, BomPreviewPanel
+│       │       └── utils/     # connectionRules.ts (handle compatibility)
+│       └── App.tsx            # Route definitions
+│
+├── server/                    # Node.js + Express + TypeScript
+│   └── src/
+│       ├── routes/
+│       │   ├── quotes.routes.ts      # Quotes CRUD + BoM + PDF + design endpoints
+│       │   ├── design.routes.ts      # Wire calculation endpoint
+│       │   ├── components.routes.ts  # Brand-filtered component listing
+│       │   ├── auth.routes.ts
+│       │   ├── products.routes.ts
+│       │   ├── panels.routes.ts
+│       │   ├── tools.routes.ts
+│       │   └── admin.routes.ts
+│       ├── services/
+│       │   ├── pdf-generator.ts           # Brand-aware PDF generation
+│       │   ├── graph-bom-generator.ts     # Design graph → BoM (all brands)
+│       │   ├── pricing.service.ts
+│       │   ├── design-assistant.ts        # MPPT auto-suggestion
+│       │   └── rule-engine/               # 9 engine modules + types
+│       │       ├── system-class.engine.ts
+│       │       ├── pv-string.engine.ts
+│       │       ├── dc-battery.engine.ts
+│       │       ├── dc-protection.engine.ts
+│       │       ├── ac-cable.engine.ts
+│       │       ├── ac-protection.engine.ts
+│       │       ├── mounting.engine.ts
+│       │       ├── labour.engine.ts
+│       │       ├── system-accessories.engine.ts  # Brand-aware accessories
+│       │       └── types.ts
+│       ├── database/
+│       │   ├── connection.ts          # SQLite (better-sqlite3, WAL)
+│       │   ├── migrate.ts            # Schema + seeds (001–006)
+│       │   └── migrations/           # 006_node_designer.ts (brand support)
+│       └── index.ts                   # Express app entry
+│
+└── data/                      # SQLite DB file (epro.db)
+```
+
+## Supported Brands & System Classes
+
+| Brand | System Classes | Topology | Notes |
+|-------|---------------|----------|-------|
+| **Victron** | V5, V8, V10, V15 | Low voltage (48V), external MPPTs, battery | Fully configured with real specs |
+| **Atess** | ATT5, ATT10 | High voltage, integrated MPPT, battery | **Placeholder specs — needs real datasheets** |
+| **Sungrow** | SG5, SG10 | High voltage, integrated MPPT, grid-tie only (no battery) | **Placeholder specs — needs real datasheets** |
+
+## Rule Engine Sections (11 total)
+`inverter`, `solar_panels`, `battery`, `dc_battery`, `pv_cabling`, `pv_dc_protection`, `ac_cabling`, `ac_protection`, `mounting`, `labour`, `travel`
+
+## Test Data
+- 3 clients: Test Client, Test Custie, Stiaan
+- 23 quotes (16 wizard V5/V8/V10, 4+ designer ATT5/SG5)
+- 8 inverters (4 Victron, 2 Atess, 2 Sungrow)
+- 3 MPPTs (Victron), 2 batteries (Victron + Atess)
+- 40+ products across all categories
+
+---
+
+## What's Next
+
+### Immediate — Component Data (Sprint 7)
+- Populate real Atess and Sungrow specs from product datasheets
+- Add correct cable sizes, protection devices, and accessories per brand
+- Verify BoM output against real installation quotes
+
+### Future Ideas
 - Quote versioning (snapshot BoM on each change)
 - Email quote PDF to client
-- Dashboard stats (quotes by status, revenue pipeline)
 - Multi-user support with role-based access (sales vs admin views)
 - Quote templates / clone existing quote
 - Inventory tracking / stock availability

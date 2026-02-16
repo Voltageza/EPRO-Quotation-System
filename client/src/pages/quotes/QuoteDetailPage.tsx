@@ -33,7 +33,10 @@ const statusColor: Record<string, string> = {
   draft: 'gray', review: 'yellow', approved: 'green', sent: 'blue', rejected: 'red', expired: 'orange',
 };
 
-const classColor: Record<string, string> = { V5: 'blue', V8: 'teal', V10: 'orange', V15: 'red' };
+const classColor: Record<string, string> = {
+  V5: 'blue', V8: 'teal', V10: 'orange', V15: 'red',
+  ATT5: 'violet', ATT10: 'grape', SG5: 'cyan', SG8: 'teal', SG10: 'lime', SG10RT: 'lime',
+};
 
 interface BomItem {
   id: number; sku: string; product_name: string; unit: string;
@@ -134,6 +137,9 @@ export default function QuoteDetailPage() {
           <Badge color={classColor[quote.system_class] || 'gray'} size="lg">
             {quote.system_class}
           </Badge>
+          {quote.design_mode === 'designer' && (
+            <Badge size="lg" variant="light" color="violet">Designer</Badge>
+          )}
         </Group>
         <Group>
           <Button variant="outline" onClick={handleDownloadPdf} leftSection={<IconDownload size={16} />}>
@@ -143,7 +149,15 @@ export default function QuoteDetailPage() {
             Clone
           </Button>
           {(quote.status === 'draft' || quote.status === 'review') && (
-            <Button variant="outline" onClick={() => navigate(`/quotes/${quoteId}/edit`)} leftSection={<IconEdit size={16} />}>
+            <Button
+              variant="outline"
+              onClick={() => navigate(
+                quote.design_mode === 'designer'
+                  ? `/quotes/${quoteId}/design`
+                  : `/quotes/${quoteId}/edit`
+              )}
+              leftSection={<IconEdit size={16} />}
+            >
               Edit
             </Button>
           )}

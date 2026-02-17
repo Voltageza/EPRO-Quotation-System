@@ -27,15 +27,6 @@ const SYSTEM_CURRENTS: Record<string, SystemCurrents> = {
   V8:    { systemVoltage: 48, dcBatteryA: 175, acA: 34.8,  pvPerStringA: 15 },
   V10:   { systemVoltage: 48, dcBatteryA: 220, acA: 43.5,  pvPerStringA: 15 },
   V15:   { systemVoltage: 48, dcBatteryA: 330, acA: 65.2,  pvPerStringA: 15 },
-  // Atess HPS (high-voltage DC battery 352-600V, three-phase AC 400V)
-  ATT5:  { systemVoltage: 480, dcBatteryA: 62,  acA: 43,   pvPerStringA: 15 },
-  ATT10: { systemVoltage: 480, dcBatteryA: 104, acA: 72,   pvPerStringA: 15 },
-  // Sungrow SH RS (low-voltage battery ~200V nominal, single-phase 230V)
-  SG5:   { systemVoltage: 230, dcBatteryA: 25,  acA: 22.7, pvPerStringA: 15 },
-  SG8:   { systemVoltage: 230, dcBatteryA: 40,  acA: 36.3, pvPerStringA: 15 },
-  SG10:  { systemVoltage: 230, dcBatteryA: 50,  acA: 45.5, pvPerStringA: 15 },
-  // Sungrow SH RT (high-voltage battery 150-600V, three-phase 400V)
-  SG10RT: { systemVoltage: 400, dcBatteryA: 25, acA: 16,   pvPerStringA: 15 },
 };
 
 /** Map wire gauge labels to cross-section area in mm² */

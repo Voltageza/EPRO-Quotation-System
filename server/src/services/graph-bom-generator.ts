@@ -175,7 +175,7 @@ export function generateBomFromDesign(input: DesignInput): GraphBomResult {
 
   if (panelData && totalPanelQty > 0) {
     if (hasMppt && inverter) {
-      // Integrated MPPT (Sungrow/Atess) — create synthetic MPPT data from inverter
+      // Integrated MPPT — create synthetic MPPT data from inverter
       const syntheticMppt: MpptData = {
         id: 0,
         product_id: inverter.product_id,

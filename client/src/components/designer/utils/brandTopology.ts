@@ -1,7 +1,7 @@
 import { Connection, Edge } from '@xyflow/react';
 import { DesignerNodeType } from '../nodes/nodeTypes';
 
-export type BrandKey = 'Victron' | 'Atess' | 'Sungrow';
+export type BrandKey = 'Victron';
 
 interface HandlePair {
   sourceHandle: string;
@@ -34,37 +34,9 @@ export const BRAND_TOPOLOGIES: Record<BrandKey, BrandTopology> = {
     integratedMppt: false,
     hasBattery: true,
   },
-  Atess: {
-    label: 'Atess',
-    type: 'High Voltage Hybrid',
-    description: 'Panel → Inverter (integrated MPPT) ← Battery, Inverter → DB → Grid',
-    allowedNodeTypes: ['solarPanelArray', 'battery', 'inverter', 'distributionBoard', 'gridConnection'],
-    validConnections: [
-      { sourceHandle: 'dc-pv-out', targetHandle: 'dc-pv-in' },     // Panel → Inverter (integrated MPPT)
-      { sourceHandle: 'dc-out', targetHandle: 'dc-battery-in' },    // Battery → Inverter
-      { sourceHandle: 'ac-out', targetHandle: 'ac-in' },            // Inverter → DB
-      { sourceHandle: 'ac-grid-out', targetHandle: 'ac-in' },       // DB → Grid
-    ],
-    integratedMppt: true,
-    hasBattery: true,
-  },
-  Sungrow: {
-    label: 'Sungrow',
-    type: 'Hybrid (SH Series)',
-    description: 'Panel → Inverter (integrated MPPT) ← Battery, Inverter → DB → Grid',
-    allowedNodeTypes: ['solarPanelArray', 'battery', 'inverter', 'distributionBoard', 'gridConnection'],
-    validConnections: [
-      { sourceHandle: 'dc-pv-out', targetHandle: 'dc-pv-in' },     // Panel → Inverter (integrated MPPT)
-      { sourceHandle: 'dc-out', targetHandle: 'dc-battery-in' },    // Battery → Inverter
-      { sourceHandle: 'ac-out', targetHandle: 'ac-in' },            // Inverter → DB
-      { sourceHandle: 'ac-grid-out', targetHandle: 'ac-in' },       // DB → Grid
-    ],
-    integratedMppt: true,
-    hasBattery: true,
-  },
 };
 
-export const BRAND_OPTIONS: BrandKey[] = ['Victron', 'Atess', 'Sungrow'];
+export const BRAND_OPTIONS: BrandKey[] = ['Victron'];
 
 export function getValidConnectionsForBrand(brand: BrandKey): HandlePair[] {
   return BRAND_TOPOLOGIES[brand]?.validConnections ?? BRAND_TOPOLOGIES.Victron.validConnections;

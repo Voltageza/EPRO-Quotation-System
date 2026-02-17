@@ -17,8 +17,6 @@ export interface InverterData {
 
 const brandColors: Record<string, string> = {
   Victron: '#1c7ed6',
-  Atess: '#7950f2',
-  Sungrow: '#12b886',
 };
 
 function InverterNode({ data, selected }: NodeProps) {
@@ -28,7 +26,7 @@ function InverterNode({ data, selected }: NodeProps) {
 
   // Port visibility rules based on brand
   const showMpptIn = brand === 'Victron';       // External MPPT input
-  const showPvIn = d.hasMppt;                    // Integrated MPPT (Sungrow/Atess)
+  const showPvIn = d.hasMppt;                    // Integrated MPPT (brands with built-in MPPT)
   const showBatteryIn = d.hasBatteryPort !== false; // Victron + Atess have battery
 
   return (
@@ -47,7 +45,7 @@ function InverterNode({ data, selected }: NodeProps) {
       <Group gap="xs" mb={4}>
         <IconBolt size={18} color={brandColors[brand] || '#1c7ed6'} />
         <Text size="xs" fw={700} c="dark">Inverter</Text>
-        <Badge size="xs" color={brand === 'Sungrow' ? 'teal' : brand === 'Atess' ? 'violet' : 'blue'} variant="light">
+        <Badge size="xs" color={brandColors[brand] ? 'blue' : 'gray'} variant="light">
           {brand}
         </Badge>
       </Group>

@@ -37,17 +37,6 @@ export function resolveSystemAccessories(
       addProduct('GX1', 1, 'GX Cerbo monitoring');
       break;
 
-    case 'Atess':
-      // Atess uses built-in monitoring — no external GX needed
-      // Communication cable still needed for parallel systems
-      addProduct('B/P4', 1, 'Communication cable');
-      break;
-
-    case 'Sungrow':
-      // Sungrow has built-in WiFi dongle — minimal accessories
-      // No VE Direct, no GX, no communication cable needed
-      break;
-
     default:
       flags.push({
         code: 'UNKNOWN_BRAND',

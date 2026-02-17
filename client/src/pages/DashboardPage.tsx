@@ -20,7 +20,6 @@ const STATUS_COLORS: Record<string, string> = {
 
 const CLASS_COLORS: Record<string, string> = {
   V5: '#339af0', V8: '#20c997', V10: '#fd7e14', V15: '#fa5252',
-  ATT5: '#7950f2', ATT10: '#be4bdb', SG5: '#15aabf', SG8: '#20c997', SG10: '#82c91e', SG10RT: '#94d82d',
 };
 
 const CARD_GRADIENTS: Array<{ from: string; to: string }> = [

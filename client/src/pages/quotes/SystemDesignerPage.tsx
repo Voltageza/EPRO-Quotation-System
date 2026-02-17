@@ -305,7 +305,7 @@ function DesignerPageInner() {
               <>
                 <Text size="sm" fw={600}>{quoteData.quote_number}</Text>
                 <Badge size="sm" variant="light" color="violet">Designer</Badge>
-                <Badge size="sm" variant="filled" color={selectedBrand === 'Victron' ? 'blue' : selectedBrand === 'Atess' ? 'teal' : 'orange'}>
+                <Badge size="sm" variant="filled" color={selectedBrand === 'Victron' ? 'blue' : 'gray'}>
                   {selectedBrand} — {BRAND_TOPOLOGIES[selectedBrand].type}
                 </Badge>
                 <Text size="xs" c="dimmed">{quoteData.client_name}</Text>

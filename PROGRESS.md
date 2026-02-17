@@ -1,6 +1,6 @@
 # EPRO Quotation System — Progress Report
 
-**Last updated:** 2026-02-15
+**Last updated:** 2026-02-17
 
 ---
 
@@ -101,11 +101,9 @@
   - Added `brand` column to `mppts`, `batteries`, `products` tables
   - Relaxed `quotes` table: removed `system_class` CHECK constraint, added `design_mode` ('wizard' | 'designer')
   - Created `quote_designs` table (stores React Flow graph JSON per quote)
-  - Seeded Atess (ATT5, ATT10) and Sungrow (SG5, SG10) inverters + batteries (placeholder specs)
-  - Seeded `rule_entries` for all new system classes across dc_battery, ac_cable, ac_protection, labour
 - **6 Custom React Flow Nodes:**
   - `SolarPanelArrayNode` — panel model + qty, `dc-pv-out` handle
-  - `InverterNode` — brand-aware conditional ports (Victron: MPPT+battery+AC; Sungrow: PV-in+AC; Atess: PV-in+battery+AC)
+  - `InverterNode` — brand-aware conditional ports (Victron: MPPT+battery+AC; integrated MPPT brands: PV-in+battery+AC)
   - `MpptNode` — `pv-in` + `dc-out` handles
   - `BatteryNode` — `dc-out` handle
   - `DistributionBoardNode` — `ac-in` + `ac-grid-out`
@@ -124,17 +122,17 @@
 #### Sprint 6c — Protection, BoM Generation & Side Panels
 - **Graph-to-BoM Generator** (`server/src/services/graph-bom-generator.ts`)
   - Traverses design graph nodes/edges → calls existing engine modules
-  - Handles integrated MPPT (Sungrow/Atess) by creating synthetic MpptData from inverter specs
+  - Handles integrated MPPT by creating synthetic MpptData from inverter specs
   - Auto-inserts DC/AC protection based on connections
 - **System Accessories Engine** (`server/src/services/rule-engine/system-accessories.engine.ts`)
-  - Brand-aware: Victron gets VE Direct + RJ45 + GX Cerbo; Atess gets communication cable; Sungrow gets nothing (built-in WiFi)
+  - Brand-aware: Victron gets VE Direct + RJ45 + GX Cerbo; other brands use default/warning
 - **MountingSidePanel**, **LabourTravelPanel** — settings tab forms
 - **BomPreviewPanel** — collapsible BoM grouped by section, flags, totals, Generate/Finalize/PDF buttons
 
 #### Sprint 6d — Integration & Polish
-- **QuotesListPage** — brand colors for ATT5/ATT10/SG5/SG10, "New Design" button, Mode column (Design vs Wizard)
+- **QuotesListPage** — brand colors for system classes, "New Design" button, Mode column (Design vs Wizard)
 - **QuoteDetailPage** — `design_mode`-aware Edit routing, Designer badge
-- **DashboardPage** — brand colors for new system classes, "New Quote" routes to designer
+- **DashboardPage** — system class colors, "New Quote" routes to designer
 - **PDF Generator** — brand-aware system label in header + summary, conditional battery/MPPT display
 - **Clone** — copies `quote_designs` graph + BoM items for designer-mode quotes
 - **Bug fixes:**
@@ -142,6 +140,57 @@
   - Removed non-existent `mounting_type`/`mounting_rows`/`mounting_cols` columns from clone + generate-bom endpoints
 
 **New dependency:** `@xyflow/react` v12 (React Flow)
+
+### Sprint 7 — Schema Improvements ✅ (Completed 2026-02-16)
+
+**Goal:** Add multi-MPPT support, fix Freedom battery brand, add P/W25 cable product.
+
+#### Migration 009 — Schema & Data Fixes
+- **Freedom battery brand fix:** Corrected from "Victron" to "FreedomWON"
+- **New P/W25 product:** 25mm² 4-core PVC/PVC cable for high-current systems
+- **New `mppt_count` column** on inverters table (defaults to 1)
+
+#### Multi-MPPT Support
+- `graph-bom-generator.ts` now uses `mpptCount` from inverter data (not hardcoded 1)
+- `components.routes.ts` returns `mppt_count` via `i.*` select
+- **NodeConfigPanel:** Passes `mppt_count` from inverter data for multi-MPPT string splitting
+
+> **Note:** Atess/Sungrow component data that was added in the original Sprint 7 was removed in Sprint 8. See Sprint 8 for details.
+
+### Sprint 8 — Remove Atess & Sungrow Data ✅ (Completed 2026-02-17)
+
+**Goal:** Remove all Atess and Sungrow product/component data so brands can be re-added later with real datasheets. The multi-brand architecture (brand columns, topology system, designer, graph-to-BoM) stays intact.
+
+#### Migrations
+- **Migration 010** (`010_remove_atess_sungrow_data.ts`) — FK-safe deletion of all Atess/Sungrow data from existing databases:
+  - Quotes with Atess/Sungrow system_class or brand (+ bom_items, designs, flags, versions)
+  - Rule entries for ATT5, ATT10, SG5, SG8, SG10, SG10RT
+  - Inverters for those system classes
+  - Batteries with brand 'Atess' or 'Sungrow'
+  - Products with brand 'Atess' or 'Sungrow'
+- **Migration 011** (`011_cleanup_atess_sungrow_quotes.ts`) — Catches quotes with `system_class='V10'` but `brand='Atess'/'Sungrow'` (test quotes missed by 010's system_class filter)
+- **Migration 006 cleaned** — Removed Atess/Sungrow product/inverter/battery/rule seeding (lines 205-406)
+- **Migration 009 cleaned** — Stripped to only: FreedomWON brand fix, P/W25 cable product, mppt_count column
+
+#### Server Service Cleanup
+- `voltage-drop-calculator.ts` — Removed 6 Atess/Sungrow entries from SYSTEM_CURRENTS (kept V5-V15)
+- `system-accessories.engine.ts` — Removed `case 'Atess'` and `case 'Sungrow'` blocks (kept Victron + default)
+- `graph-bom-generator.ts` — Updated comment from "Integrated MPPT (Sungrow/Atess)" to "Integrated MPPT"
+
+#### Client Cleanup
+- `brandTopology.ts` — `BrandKey = 'Victron'`, removed Atess/Sungrow topologies, `BRAND_OPTIONS = ['Victron']`
+- `InverterNode.tsx` — Removed Atess/Sungrow brand colors, simplified badge logic
+- `DashboardPage.tsx` — Removed ATT5/ATT10/SG5/SG8/SG10/SG10RT from CLASS_COLORS
+- `QuotesListPage.tsx`, `QuoteDetailPage.tsx` — Removed Atess/Sungrow from classColor maps
+- `NodeConfigPanel.tsx`, `SystemDesignerPage.tsx` — Simplified brand badge to Victron/gray
+
+#### What's Preserved (for future brand re-addition)
+- `brand` column on quotes, inverters, batteries, mppts, products tables
+- `has_mppt`, `has_battery_port`, `max_pv_input_w`, `mppt_count` columns on inverters
+- `quote_designs` table and graph-to-BoM generator with integrated MPPT support
+- Brand topology architecture in `brandTopology.ts` (just add new entries)
+- Connection validation matrix supporting integrated MPPT topologies
+- P/W25 25mm cable product (useful for high-current systems)
 
 ---
 
@@ -228,8 +277,8 @@ EPRO-Quotation-System/
 │       │       └── types.ts
 │       ├── database/
 │       │   ├── connection.ts          # SQLite (better-sqlite3, WAL)
-│       │   ├── migrate.ts            # Schema + seeds (001–006)
-│       │   └── migrations/           # 006_node_designer.ts (brand support)
+│       │   ├── migrate.ts            # Schema + seeds (001–011)
+│       │   └── migrations/           # 006–011 (brand support, wiring, data cleanup)
 │       └── index.ts                   # Express app entry
 │
 └── data/                      # SQLite DB file (epro.db)
@@ -237,32 +286,28 @@ EPRO-Quotation-System/
 
 ## Supported Brands & System Classes
 
-| Brand | System Classes | Topology | Notes |
-|-------|---------------|----------|-------|
-| **Victron** | V5, V8, V10, V15 | Low voltage (48V), external MPPTs, battery | Fully configured with real specs |
-| **Atess** | ATT5, ATT10 | High voltage, integrated MPPT, battery | **Placeholder specs — needs real datasheets** |
-| **Sungrow** | SG5, SG10 | High voltage, integrated MPPT, grid-tie only (no battery) | **Placeholder specs — needs real datasheets** |
+| Brand | System Classes | Topology | Inverters | Batteries |
+|-------|---------------|----------|-----------|-----------|
+| **Victron** | V5, V8, V10, V15 | Low voltage (48V), external MPPTs, battery | Multiplus-II 5-15kVA | Freedom 15kWh |
+
+> **Note:** Atess and Sungrow data was removed in Sprint 8. The multi-brand architecture is intact — add new brand topologies in `brandTopology.ts`, seed products/inverters/batteries via a new migration, and add system currents to `voltage-drop-calculator.ts`.
 
 ## Rule Engine Sections (11 total)
 `inverter`, `solar_panels`, `battery`, `dc_battery`, `pv_cabling`, `pv_dc_protection`, `ac_cabling`, `ac_protection`, `mounting`, `labour`, `travel`
 
 ## Test Data
 - 3 clients: Test Client, Test Custie, Stiaan
-- 23 quotes (16 wizard V5/V8/V10, 4+ designer ATT5/SG5)
-- 8 inverters (4 Victron, 2 Atess, 2 Sungrow)
-- 3 MPPTs (Victron), 2 batteries (Victron + Atess)
-- 40+ products across all categories
+- 32 quotes (all Victron — wizard V5/V8/V10, designer V5/V8/V10)
+- 4 inverters (Victron Multiplus-II: V5, V8, V10, V15)
+- 3 MPPTs (Victron), 1 battery (FreedomWON 15kWh)
+- 60+ products across all categories (incl. P/W25 25mm cable)
 
 ---
 
 ## What's Next
 
-### Immediate — Component Data (Sprint 7)
-- Populate real Atess and Sungrow specs from product datasheets
-- Add correct cable sizes, protection devices, and accessories per brand
-- Verify BoM output against real installation quotes
-
 ### Future Ideas
+- Re-add Atess/Sungrow brands with real datasheet data (architecture ready)
 - Quote versioning (snapshot BoM on each change)
 - Email quote PDF to client
 - Multi-user support with role-based access (sales vs admin views)

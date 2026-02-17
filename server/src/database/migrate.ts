@@ -8,6 +8,8 @@ import { up as nodeDesigner } from './migrations/006_node_designer';
 import { up as brandColumn } from './migrations/007_brand_column';
 import { up as victronWiringProducts } from './migrations/008_victron_wiring_products';
 import { up as realComponentData } from './migrations/009_real_component_data';
+import { up as removeAtessSungrow } from './migrations/010_remove_atess_sungrow_data';
+import { up as cleanupAtessSungrowQuotes } from './migrations/011_cleanup_atess_sungrow_quotes';
 
 interface Migration {
   name: string;
@@ -24,6 +26,8 @@ const migrations: Migration[] = [
   { name: '007_brand_column', up: brandColumn },
   { name: '008_victron_wiring_products', up: victronWiringProducts },
   { name: '009_real_component_data', up: realComponentData },
+  { name: '010_remove_atess_sungrow_data', up: removeAtessSungrow },
+  { name: '011_cleanup_atess_sungrow_quotes', up: cleanupAtessSungrowQuotes },
 ];
 
 export function runMigrations(): void {

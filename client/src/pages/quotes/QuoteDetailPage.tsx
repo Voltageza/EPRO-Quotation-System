@@ -35,6 +35,7 @@ const statusColor: Record<string, string> = {
 
 const classColor: Record<string, string> = {
   V5: 'blue', V8: 'teal', V10: 'orange', V15: 'red',
+  ATT30: 'orange', ATT50: 'orange', ATT100: 'red', ATT120: 'pink', ATT150: 'grape',
 };
 
 interface BomItem {

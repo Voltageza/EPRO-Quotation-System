@@ -160,7 +160,7 @@ function InverterConfig({ data, inverters, brand, onUpdate }: {
 
   return (
     <Stack gap="xs">
-      <Badge size="sm" variant="filled" color={brand === 'Victron' ? 'blue' : 'gray'}>
+      <Badge size="sm" variant="filled" color={brand === 'Atess' ? 'orange' : brand === 'Victron' ? 'blue' : 'gray'}>
         {brand}
       </Badge>
       <Select

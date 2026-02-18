@@ -27,6 +27,12 @@ const SYSTEM_CURRENTS: Record<string, SystemCurrents> = {
   V8:    { systemVoltage: 48, dcBatteryA: 175, acA: 34.8,  pvPerStringA: 15 },
   V10:   { systemVoltage: 48, dcBatteryA: 220, acA: 43.5,  pvPerStringA: 15 },
   V15:   { systemVoltage: 48, dcBatteryA: 330, acA: 65.2,  pvPerStringA: 15 },
+  // Atess HPS commercial (high-voltage 400V 3-phase)
+  ATT30:  { systemVoltage: 400, dcBatteryA: 93,  acA: 43,  pvPerStringA: 10 },
+  ATT50:  { systemVoltage: 400, dcBatteryA: 156, acA: 72,  pvPerStringA: 10 },
+  ATT100: { systemVoltage: 400, dcBatteryA: 313, acA: 144, pvPerStringA: 10 },
+  ATT120: { systemVoltage: 400, dcBatteryA: 374, acA: 173, pvPerStringA: 10 },
+  ATT150: { systemVoltage: 400, dcBatteryA: 467, acA: 217, pvPerStringA: 10 },
 };
 
 /** Map wire gauge labels to cross-section area in mm² */
@@ -40,6 +46,10 @@ const GAUGE_TO_MM2: Record<string, number> = {
   '50mm²': 50,
   '70mm²': 70,
   '95mm²': 95,
+  '120mm²': 120,
+  '150mm²': 150,
+  '185mm²': 185,
+  '240mm²': 240,
 };
 
 export interface VoltageDropResult {

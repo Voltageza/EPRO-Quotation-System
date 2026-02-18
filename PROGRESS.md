@@ -1,6 +1,6 @@
 # EPRO Quotation System — Progress Report
 
-**Last updated:** 2026-02-17
+**Last updated:** 2026-02-18
 
 ---
 
@@ -192,6 +192,36 @@
 - Connection validation matrix supporting integrated MPPT topologies
 - P/W25 25mm cable product (useful for high-current systems)
 
+### Sprint 9 — Re-add Atess HPS with Commercial Rules ✅ (Completed 2026-02-18)
+
+**Goal:** Re-add Atess HPS inverters (5 models) with FreedomWON HV batteries and full 3-phase commercial rule tables. Brand-aware RCD selection.
+
+#### Migration 012 — Seed Atess HPS Data
+- **5 Atess HPS Inverters:** HPS30 (30kW, 2 MPPT), HPS50 (50kW, 4 MPPT), HPS100 (100kW, 6 MPPT), HPS120 (120kW, 8 MPPT), HPS150 (150kW, 10 MPPT)
+  - All 400V 3-phase, 1000V max DC, integrated MPPT + battery port
+- **5 FreedomWON LiTE Commercial HV Batteries:** 100/200/300/400/500 kWh at 512V
+- **Commercial cable & protection products:** welding cables (50-185mm), 4-core panel wires (70-150mm), 3-pole breakers (63-250A), MCCB breakers, motorised changeover switch, 3P+N surge arrestor, HV DC fuses, 4P RCD
+- **Rule table entries for all 5 system classes (ATT30–ATT150):**
+  - DC battery cable rules (35mm→2x185mm parallel by system class)
+  - AC cable rules (10mm→150mm 4-core 3-phase by system class)
+  - AC protection rules (3-pole breakers, changeover switch, surge arrestor)
+  - Labour rules (16–56 base hours, programming hours, commercial adders)
+- **FreedomWON 15kWh battery brand fix** (set to 'Victron' for brand filtering)
+
+#### Server Service Updates
+- **`voltage-drop-calculator.ts`** — Added ATT30–ATT150 system currents (400V, 93–467A DC battery) + larger gauge wires (120–240mm²)
+- **`system-accessories.engine.ts`** — Added `case 'Atess'` for CAN/RS485 communication cable
+- **`graph-bom-generator.ts`** — Brand-aware RCD: 4P 63A 30mA for Atess 3-phase, 2P 40A 30mA for Victron
+
+#### Client Updates
+- **`brandTopology.ts`** — Added Atess HPS topology (integrated MPPT, 400V 3-phase, Panel→Inverter←Battery flow)
+- **`InverterNode.tsx`** — Atess orange brand color (#e8590c)
+- **`NodeConfigPanel.tsx`** — Atess orange badge in inverter config
+- **`SystemDesignerPage.tsx`** — Add Client modal (inline create), Atess brand badge color
+- **`DashboardPage.tsx`** — ATT30–ATT150 class colors
+- **`QuotesListPage.tsx`** — ATT30–ATT150 class colors
+- **`QuoteDetailPage.tsx`** — ATT30–ATT150 class colors
+
 ---
 
 ## How to Start the App
@@ -277,8 +307,8 @@ EPRO-Quotation-System/
 │       │       └── types.ts
 │       ├── database/
 │       │   ├── connection.ts          # SQLite (better-sqlite3, WAL)
-│       │   ├── migrate.ts            # Schema + seeds (001–011)
-│       │   └── migrations/           # 006–011 (brand support, wiring, data cleanup)
+│       │   ├── migrate.ts            # Schema + seeds (001–012)
+│       │   └── migrations/           # 006–012 (brand support, wiring, data cleanup, Atess HPS)
 │       └── index.ts                   # Express app entry
 │
 └── data/                      # SQLite DB file (epro.db)
@@ -288,9 +318,10 @@ EPRO-Quotation-System/
 
 | Brand | System Classes | Topology | Inverters | Batteries |
 |-------|---------------|----------|-----------|-----------|
-| **Victron** | V5, V8, V10, V15 | Low voltage (48V), external MPPTs, battery | Multiplus-II 5-15kVA | Freedom 15kWh |
+| **Victron** | V5, V8, V10, V15 | Low voltage (48V), external MPPTs, battery | Multiplus-II 5-15kVA | FreedomWON 15kWh |
+| **Atess HPS** | ATT30, ATT50, ATT100, ATT120, ATT150 | High voltage (400V), 3-phase, integrated MPPT | HPS 30-150kW hybrid | FreedomWON LiTE 100-500kWh HV |
 
-> **Note:** Atess and Sungrow data was removed in Sprint 8. The multi-brand architecture is intact — add new brand topologies in `brandTopology.ts`, seed products/inverters/batteries via a new migration, and add system currents to `voltage-drop-calculator.ts`.
+> **Note:** Sungrow data was removed in Sprint 8. The multi-brand architecture supports re-adding — add topology in `brandTopology.ts`, seed products via migration, and add system currents to `voltage-drop-calculator.ts`.
 
 ## Rule Engine Sections (11 total)
 `inverter`, `solar_panels`, `battery`, `dc_battery`, `pv_cabling`, `pv_dc_protection`, `ac_cabling`, `ac_protection`, `mounting`, `labour`, `travel`
@@ -298,9 +329,9 @@ EPRO-Quotation-System/
 ## Test Data
 - 3 clients: Test Client, Test Custie, Stiaan
 - 32 quotes (all Victron — wizard V5/V8/V10, designer V5/V8/V10)
-- 4 inverters (Victron Multiplus-II: V5, V8, V10, V15)
-- 3 MPPTs (Victron), 1 battery (FreedomWON 15kWh)
-- 60+ products across all categories (incl. P/W25 25mm cable)
+- 9 inverters (4 Victron Multiplus-II: V5/V8/V10/V15 + 5 Atess HPS: ATT30/50/100/120/150)
+- 3 MPPTs (Victron), 6 batteries (1 FreedomWON 15kWh + 5 FreedomWON LiTE HV 100-500kWh)
+- 85+ products across all categories (incl. commercial cables, 3-phase protection, HV fuses)
 
 ---
 

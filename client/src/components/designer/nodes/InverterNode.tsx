@@ -17,6 +17,7 @@ export interface InverterData {
 
 const brandColors: Record<string, string> = {
   Victron: '#1c7ed6',
+  Atess: '#e8590c',
 };
 
 function InverterNode({ data, selected }: NodeProps) {
@@ -45,7 +46,7 @@ function InverterNode({ data, selected }: NodeProps) {
       <Group gap="xs" mb={4}>
         <IconBolt size={18} color={brandColors[brand] || '#1c7ed6'} />
         <Text size="xs" fw={700} c="dark">Inverter</Text>
-        <Badge size="xs" color={brandColors[brand] ? 'blue' : 'gray'} variant="light">
+        <Badge size="xs" color={brand === 'Atess' ? 'orange' : brand === 'Victron' ? 'blue' : 'gray'} variant="light">
           {brand}
         </Badge>
       </Group>

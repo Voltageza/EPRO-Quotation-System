@@ -284,12 +284,16 @@ export function generateBomFromDesign(input: DesignInput): GraphBomResult {
     allItems.push(...acProtResult.items);
     allFlags.push(...acProtResult.flags);
 
-    // RCD / Earth Leakage breaker — standard AC safety requirement
+    // RCD / Earth Leakage breaker — standard AC safety requirement (brand-aware)
+    const rcdSku = brand === 'Atess' ? 'RCD/4P' : 'RCD/2P';
+    const rcdNote = brand === 'Atess'
+      ? 'RCD Earth Leakage 4P 63A 30mA (3-phase)'
+      : 'RCD Earth Leakage 2P 40A 30mA';
     allItems.push({
-      sku: 'RCD/2P', product_id: 0,
+      sku: rcdSku, product_id: 0,
       section: 'ac_protection', quantity: 1,
       is_locked: false, source_rule: 'graph_rcd',
-      note: 'RCD Earth Leakage 2P 40A 30mA',
+      note: rcdNote,
     });
   }
 

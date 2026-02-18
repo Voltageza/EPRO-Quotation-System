@@ -37,6 +37,10 @@ export function resolveSystemAccessories(
       addProduct('GX1', 1, 'GX Cerbo monitoring');
       break;
 
+    case 'Atess':
+      addProduct('ATESS/COM', 1, 'Atess CAN/RS485 communication cable');
+      break;
+
     default:
       flags.push({
         code: 'UNKNOWN_BRAND',

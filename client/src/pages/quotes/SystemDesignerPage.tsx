@@ -5,10 +5,10 @@ import {
 } from '@xyflow/react';
 import {
   Stack, Group, Title, Button, Select, Text, Badge, Loader, Card, Paper,
-  Divider, Tabs,
+  Divider, Tabs, Modal, TextInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconArrowLeft, IconDeviceFloppy, IconSettings, IconList, IconTool } from '@tabler/icons-react';
+import { IconArrowLeft, IconDeviceFloppy, IconSettings, IconList, IconTool, IconUserPlus } from '@tabler/icons-react';
 
 import DesignerCanvas from '../../components/designer/DesignerCanvas';
 import ComponentPalette from '../../components/designer/panels/ComponentPalette';
@@ -17,7 +17,7 @@ import MountingSidePanel from '../../components/designer/panels/MountingSidePane
 import LabourTravelPanel from '../../components/designer/panels/LabourTravelPanel';
 import BomPreviewPanel from '../../components/designer/panels/BomPreviewPanel';
 import {
-  getClients, createQuote, getQuote,
+  getClients, createClient, createQuote, getQuote,
   saveDesign, loadDesign, generateBomFromDesign, updateQuote, downloadQuotePdf,
 } from '../../api/quotes.api';
 import { getPanels } from '../../api/components.api';
@@ -69,6 +69,39 @@ function DesignerPageInner() {
 
   // Right panel tab
   const [rightTab, setRightTab] = useState<string | null>('config');
+
+  // Add client modal
+  const [clientModalOpen, setClientModalOpen] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientPhone, setNewClientPhone] = useState('');
+  const [newClientEmail, setNewClientEmail] = useState('');
+  const [newClientAddress, setNewClientAddress] = useState('');
+  const [clientSaving, setClientSaving] = useState(false);
+
+  const handleCreateClient = async () => {
+    if (!newClientName.trim()) {
+      notifications.show({ title: 'Error', message: 'Client name is required', color: 'red' });
+      return;
+    }
+    setClientSaving(true);
+    try {
+      const result = await createClient({
+        name: newClientName.trim(),
+        phone: newClientPhone.trim() || undefined,
+        email: newClientEmail.trim() || undefined,
+        address: newClientAddress.trim() || undefined,
+      });
+      const newClient = { id: result.id, name: newClientName.trim() };
+      setClients((prev) => [...prev, newClient]);
+      setSelectedClientId(String(result.id));
+      setClientModalOpen(false);
+      setNewClientName(''); setNewClientPhone(''); setNewClientEmail(''); setNewClientAddress('');
+      notifications.show({ title: 'Created', message: `Client "${newClient.name}" added`, color: 'green' });
+    } catch {
+      notifications.show({ title: 'Error', message: 'Failed to create client', color: 'red' });
+    }
+    setClientSaving(false);
+  };
 
   // Auto-save timer
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -252,14 +285,20 @@ function DesignerPageInner() {
         </Group>
         <Card shadow="sm" radius="md" withBorder p="lg">
           <Stack gap="md">
-            <Select
-              label="Client"
-              placeholder="Select client..."
-              data={clients.map((c: any) => ({ value: String(c.id), label: c.name }))}
-              value={selectedClientId}
-              onChange={setSelectedClientId}
-              searchable
-            />
+            <Group align="flex-end" gap="xs">
+              <Select
+                label="Client"
+                placeholder="Select client..."
+                data={clients.map((c: any) => ({ value: String(c.id), label: c.name }))}
+                value={selectedClientId}
+                onChange={setSelectedClientId}
+                searchable
+                style={{ flex: 1 }}
+              />
+              <Button variant="light" size="sm" leftSection={<IconUserPlus size={16} />} onClick={() => setClientModalOpen(true)}>
+                Add
+              </Button>
+            </Group>
             <Select
               label="Brand / Topology"
               data={BRAND_OPTIONS.map((b) => ({
@@ -287,6 +326,18 @@ function DesignerPageInner() {
             </Button>
           </Stack>
         </Card>
+
+        <Modal opened={clientModalOpen} onClose={() => setClientModalOpen(false)} title="Add New Client" centered>
+          <Stack gap="sm">
+            <TextInput label="Name" placeholder="Client name" required value={newClientName} onChange={(e) => setNewClientName(e.currentTarget.value)} />
+            <TextInput label="Phone" placeholder="Phone number" value={newClientPhone} onChange={(e) => setNewClientPhone(e.currentTarget.value)} />
+            <TextInput label="Email" placeholder="Email address" value={newClientEmail} onChange={(e) => setNewClientEmail(e.currentTarget.value)} />
+            <TextInput label="Address" placeholder="Address" value={newClientAddress} onChange={(e) => setNewClientAddress(e.currentTarget.value)} />
+            <Button onClick={handleCreateClient} loading={clientSaving} fullWidth>
+              Create Client
+            </Button>
+          </Stack>
+        </Modal>
       </Stack>
     );
   }
@@ -305,7 +356,7 @@ function DesignerPageInner() {
               <>
                 <Text size="sm" fw={600}>{quoteData.quote_number}</Text>
                 <Badge size="sm" variant="light" color="violet">Designer</Badge>
-                <Badge size="sm" variant="filled" color={selectedBrand === 'Victron' ? 'blue' : 'gray'}>
+                <Badge size="sm" variant="filled" color={selectedBrand === 'Atess' ? 'orange' : selectedBrand === 'Victron' ? 'blue' : 'gray'}>
                   {selectedBrand} — {BRAND_TOPOLOGIES[selectedBrand].type}
                 </Badge>
                 <Text size="xs" c="dimmed">{quoteData.client_name}</Text>

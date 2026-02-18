@@ -10,6 +10,7 @@ import { up as victronWiringProducts } from './migrations/008_victron_wiring_pro
 import { up as realComponentData } from './migrations/009_real_component_data';
 import { up as removeAtessSungrow } from './migrations/010_remove_atess_sungrow_data';
 import { up as cleanupAtessSungrowQuotes } from './migrations/011_cleanup_atess_sungrow_quotes';
+import { up as seedAtessHpsData } from './migrations/012_seed_atess_hps_data';
 
 interface Migration {
   name: string;
@@ -28,6 +29,7 @@ const migrations: Migration[] = [
   { name: '009_real_component_data', up: realComponentData },
   { name: '010_remove_atess_sungrow_data', up: removeAtessSungrow },
   { name: '011_cleanup_atess_sungrow_quotes', up: cleanupAtessSungrowQuotes },
+  { name: '012_seed_atess_hps_data', up: seedAtessHpsData },
 ];
 
 export function runMigrations(): void {
